@@ -33,7 +33,7 @@ def get_timestamp():
 def setup_parser():
     parser = argparse.ArgumentParser()
     # Federated training settings
-    parser.add_argument("-N", "--clients", help="The number of participants", type=int, default=10)
+    parser.add_argument("-N", "--clients", help="The number of participants", type=int, default=2)
     parser.add_argument(
         "-VN", "--virtual_clients", help="The number of virtual clients", type=int, default=1
     )
@@ -45,7 +45,7 @@ def setup_parser():
         "--early", action="store_true", help="early stop w/o improvement over 20 epochs"
     )
     parser.add_argument("--batch", type=int, default=128, help="batch size")
-    parser.add_argument("--rounds", type=int, default=200, help="iterations for communication")
+    parser.add_argument("--rounds", type=int, default=100, help="iterations for communication")
     parser.add_argument("--local_epochs", type=int, default=1, help="local training epochs")
     parser.add_argument("--mode", type=str, default="fedavg", help="different FL algorithms")
     parser.add_argument(
@@ -134,7 +134,7 @@ def setup_parser():
     parser.add_argument(
         "--dp_mode",
         type=str,
-        default="bounded",
+        default="overhead",
         choices=["overhead", "bounded"],
         help="Using which mode to do private training. Options: overhead, bounded.",
     )

@@ -27,10 +27,11 @@ from nets.models import (
     UNet,
 )
 
-from fed.base_trainer import BaseFederatedTrainer
+from fed.global_trainer import FedTrainner
 from utils.util import setup_logger, get_timestamp, setup_parser
 from utils.datasets import split_df, split_dataset, balance_split_dataset
 from utils.workflow import prepare_workflow
+
 
 
 if __name__ == "__main__":
@@ -38,6 +39,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.save_path = os.path.join(args.save_path, "test_folder")
+    args.data_path = "/Users/jechin/github/miccai/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train"
     SAVE_PATH = args.save_path
 
     # Set up logging
@@ -87,7 +89,6 @@ if __name__ == "__main__":
     lg.info("Client Weights: " + str(client_weights))
 
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    print("#Deive:", device)
     lg.info(f"Device: {device}")
 
     
@@ -96,7 +97,13 @@ if __name__ == "__main__":
     args.writer = SummaryWriter(args.log_path)
 
     # setup trainer
-    TrainerClass = BaseFederatedTrainer
+    trainer_dict = {
+        "fedavg": FedTrainner,
+        "dpsgd": FedTrainner,
+    }
+    TrainerClass = trainer_dict[args.mode]
+
+    original_server_model  = copy.deepcopy(server_model)
 
     trainer = TrainerClass(
         args,
@@ -139,8 +146,12 @@ if __name__ == "__main__":
     if args.test:
         trainer.inference(args.ckpt, test_loaders, loss_fun, val_sites, process=True)
     else:
-        trainer.start(
-            train_loaders, val_loaders, test_loaders, loss_fun, SAVE_PATH, generalize_sites
-        )
+        try:
+            trainer.start(
+                train_loaders, val_loaders, test_loaders, loss_fun, SAVE_PATH
+            )
+        except NotImplementedError:
+            print("private finish")
+
 
     logging.shutdown()

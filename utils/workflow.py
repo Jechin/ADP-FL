@@ -64,19 +64,19 @@ def prepare_workflow(args, logging):
         real_trainsets = []
         for idx in range(N_total_client):
             trainset = DFDataset(
-                root_dir="/root/miccai/RSNA-ICH/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train",    # TODO: change the path here
+                root_dir=args.data_path,    # TODO: change the path here
                 data_frame=train_dfs[idx],
                 transform=transform_list,
                 site_idx=idx,
             )
             valset = DFDataset(
-                root_dir="/root/miccai/RSNA-ICH/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train",
+                root_dir=args.data_path,
                 data_frame=val_dfs[idx],
                 transform=transform_test,
                 site_idx=idx,
             )
             testset = DFDataset(
-                root_dir="/root/miccai/RSNA-ICH/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train",
+                root_dir=args.data_path,
                 data_frame=test_dfs[idx],
                 transform=transform_test,
                 site_idx=idx,
@@ -95,16 +95,16 @@ def prepare_workflow(args, logging):
 
         if args.clients < N_total_client:
             idx = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
-            real_trainsets = [real_trainsets[i] for i in idx]
-
-        for c_idx, client_trainset in enumerate(real_trainsets):
-            dict_users = split_dataset(client_trainset, args.virtual_clients)
-            for v_idx in range(args.virtual_clients):
-                virtual_trainset = DatasetSplit(
-                    client_trainset, dict_users[v_idx], c_idx, v_idx
-                )
-                trainsets.append(virtual_trainset)
-                logging.info(f"[Virtual Client {c_idx}-{v_idx}] Train={len(virtual_trainset)}")
+            trainsets = [real_trainsets[i] for i in idx]
+        
+        # for c_idx, client_trainset in enumerate(real_trainsets):
+        #     dict_users = split_dataset(client_trainset, args.virtual_clients)
+        #     for v_idx in range(args.virtual_clients):
+        #         virtual_trainset = DatasetSplit(
+        #             client_trainset, dict_users[v_idx], c_idx, v_idx
+        #         )
+        #         trainsets.append(virtual_trainset)
+        #         logging.info(f"[Virtual Client {c_idx}-{v_idx}] Train={len(virtual_trainset)}")
     else:
         raise NotImplementedError
 
@@ -154,7 +154,6 @@ def prepare_workflow(args, logging):
                     torch.utils.data.DataLoader(testset, batch_size=args.batch, shuffle=False)
                 )
     else:
-        print(f"trainsets: {len(trainsets)}")
         for idx in range(len(trainsets)):
             if args.debug:
                 train_loaders.append(
