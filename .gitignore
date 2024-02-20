@@ -162,3 +162,8 @@ cython_debug/
 
 # log
 log/
+
+# dataset
+dataset/Prostate/*.zip
+dataset/Prostate/datalist_2D
+dataset/Prostate/dataset_2D
