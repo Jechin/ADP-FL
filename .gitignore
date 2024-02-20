@@ -167,3 +167,5 @@ log/
 dataset/Prostate/*.zip
 dataset/Prostate/datalist_2D
 dataset/Prostate/dataset_2D
+dataset/RSNA-ICH/*.zip
+dataset/RSNA-ICH/research
