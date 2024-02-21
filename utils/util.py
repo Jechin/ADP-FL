@@ -60,7 +60,7 @@ def setup_parser():
     # Experiment settings
     parser.add_argument("--exp", type=str, default=None, help="exp name")
     parser.add_argument(
-        "--save_path", type=str, default="./experiments/checkpoint/", help="path to save the checkpoint"
+        "--save_path", type=str, default="", help="path to save the checkpoint"
     )
     parser.add_argument(
         "--resume", action="store_true", help="resume training from the save path checkpoint"
