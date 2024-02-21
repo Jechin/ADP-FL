@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-21 11:02:26
+LastEditTime: 2024-02-21 16:26:07
 '''
 import sys, os
 
@@ -23,7 +23,7 @@ import logging
 import pandas as pd
 from sklearn import metrics
 from utils.loss import DiceLoss
-from utils.util import _eval_haus, _eval_iou
+from utils.util import _eval_haus, _eval_iou, dict_append, metric_log_print
 from dataset.dataset import DatasetSplit
 from utils.nova_utils import SimpleFedNova4Adam
 
@@ -114,9 +114,9 @@ class FedTrainner(object):
                 idx=idx
             ) for idx in range(len(train_loaders))
         ]
-        self.logging.info("=====================Training Start=====================") 
+        self.logging.info("=====================FL Start=====================") 
         for iter in range(self.args.rounds):
-            self.logging.info("------------ Round({:^5d}/{:^5d}) ------------".format(iter, self.args.rounds))
+            self.logging.info("------------ Round({:^5d}/{:^5d}) Train ------------".format(iter, self.args.rounds))
             t_start = time.time()
             sigma = self._calculate_sigma(
                 epsilon=self.args.epsilon, 
@@ -144,13 +144,87 @@ class FedTrainner(object):
             # copy weight to net_glob
             self.server_model.load_state_dict(w_glob)
 
+            # validation
+            self.logging.info("------------ Validation ------------")
+            with torch.no_grad():
+                assert len(self.val_sites) == len(val_loaders)
+                for client_idx in self.aggregation_idxs:
+                    local = train_clients[client_idx]
+                    val_loss, val_acc = local.test(model=self.server_model.to(self.device), mode="val")
+                    self.val_loss = dict_append(
+                        f"client_{self.val_sites[client_idx]}", val_loss, self.val_loss
+                    )
+                    self.args.writer.add_scalar(
+                        f"Loss/val_{self.val_sites[client_idx]}", val_loss, iter
+                    )
+                    if isinstance(val_acc, dict):
+                        out_str = ""
+                        for k, v in val_acc.items():
+                            out_str += " | Val {}: {:.4f}".format(k, v)
+                            self.val_acc = dict_append(
+                                f"client{self.val_sites[client_idx]}_" + k, v, self.val_acc
+                            )
+                            self.args.writer.add_scalar(
+                                f"Performance/val_client{self.val_sites[client_idx]}_{k}", v, iter,
+                            )
+
+                        self.logging.info(
+                            " Site-{:<10s}| Val Loss: {:.4f}{}".format(
+                                str(self.val_sites[client_idx]), val_loss, out_str
+                            )
+                        )
+                    else:
+                        self.val_acc = dict_append(
+                            f"client_{self.val_sites[client_idx]}",
+                            round(val_acc, 4),
+                            self.val_acc,
+                        )
+                        self.logging.info(
+                            " Site-{:<10s}| Val Loss: {:.4f} | Val Acc: {:.4f}".format(
+                                str(self.val_sites[client_idx]), val_loss, val_acc
+                            )
+                        )
+                        self.args.writer.add_scalar(
+                            f"Accuracy/val_{self.val_sites[client_idx]}", val_acc, iter
+                        )
+
+                clients_loss_avg = np.mean(
+                    [v[-1] for k, v in self.val_loss.items() if "mean" not in k]
+                )
+                self.val_loss["mean"].append(clients_loss_avg)
+                self.val_acc, out_str = metric_log_print(self.val_acc, val_acc)
+
+                self.args.writer.add_scalar(f"Loss/val", clients_loss_avg, iter)
+
+                mean_val_acc_ = (
+                    self.val_acc["mean_Acc"][-1]
+                    if "mean_Acc" in list(self.val_acc.keys())
+                    else self.val_acc["mean_Dice"][-1]
+                )
+                self.logging.info(
+                    " Site-Average | Val Loss: {:.4f}{}".format(
+                        clients_loss_avg, out_str
+                    )
+                )
+
+                if mean_val_acc_ > self.best_acc:
+                    self.best_acc = mean_val_acc_
+                    self.best_epoch = iter
+                    self.best_changed = True
+                    self.logging.info(
+                        " Best Epoch:{} | Avg Val Acc: {:.4f}".format(
+                            self.best_epoch, np.mean(mean_val_acc_)
+                        )
+                    )
+
             t_end = time.time()
-            self.logging.info("Round {:3d},Testing accuracy: {:.2f},Time:  {:.2f}s".format(iter, 0.0, t_end - t_start))
-            self.adaptive_rounds(acc=None)
+            self.logging.info("Round {:3d}, Time:  {:.2f}s".format(iter, t_end - t_start))
+            if self.args.adp_round and iter > 1:
+                self.adaptive_rounds(iter)
             if iter == 3:
                 break
 
-        self.logging.info("=====================Training completed=====================")
+        self.logging.info("=====================FL completed=====================")
 
     def _calculate_sigma(self, epsilon, delta, iter, rounds):
         # \sigma^2=\frac{T-t}{\frac{\epsilon^2}{2\ln(1/\delta)}-\sum_{i=1}^{t}\frac{1}{\sigma_i^2}}
@@ -161,10 +235,10 @@ class FedTrainner(object):
             self.logging.info(f"sigma_0: {self.sigma[0]} , sigma_1: {sigma_sqr**0.5}")
         return sigma_sqr**0.5
     
-    def adaptive_rounds(self, acc=None):
-        if acc is None:
-            return False
-        else:
-            # TODO adaptive rounds
-            raise NotImplementedError
+    def adaptive_rounds(self, iter):
+        # TODO adaptive rounds
+        factor = 0.99
+        threshold = 0.0001
+        if self.val_loss["mean"][iter-1] - self.val_loss["mean"][iter] < threshold:
+            self.args.rounds = iter + int((self.args.rounds - iter) * factor)
     

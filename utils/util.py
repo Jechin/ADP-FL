@@ -52,6 +52,9 @@ def setup_parser():
         "--adp_noise", action="store_true", help="add adaptive noise"
     )
     parser.add_argument(
+        "--adp_round", action="store_true", help="adjust round adaptive"
+    )
+    parser.add_argument(
         "--pretrain", action="store_true", help="Use Alexnet/ResNet pretrained on Imagenet"
     )
     # Experiment settings
@@ -63,7 +66,7 @@ def setup_parser():
         "--resume", action="store_true", help="resume training from the save path checkpoint"
     )
     parser.add_argument("--gpu", type=str, default="0", help='gpu device number e.g., "0,1,2"')
-    parser.add_argument("--seed", type=int, default=0, help="random seed")
+    parser.add_argument("--seed", type=int, default=1, help="random seed")
     parser.add_argument("--debug", action="store_true", help="debug mode")
     # Data settings
     parser.add_argument(
@@ -231,3 +234,63 @@ def cos_sim(a, b):
 
     cos_sim = dot(a, b) / (norm(a) * norm(b))
     return cos_sim
+
+def metric_log_print(metric_dict, cur_metric):
+    if "AUC" in list(cur_metric.keys()):
+        clients_accs_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "Acc" in k]
+        )
+        metric_dict = dict_append("mean_Acc", clients_accs_avg, metric_dict)
+
+        clients_aucs_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "AUC" in k]
+        )
+        metric_dict = dict_append("mean_AUC", clients_aucs_avg, metric_dict)
+
+        clients_sens_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "Sen" in k]
+        )
+        metric_dict = dict_append("mean_Sen", clients_sens_avg, metric_dict)
+
+        clients_spes_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "Spe" in k]
+        )
+        metric_dict = dict_append("mean_Spe", clients_spes_avg, metric_dict)
+
+        clients_f1_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "F1" in k]
+        )
+        metric_dict = dict_append("mean_F1", clients_f1_avg, metric_dict)
+
+        out_str = f" | {'AUC'}: {clients_aucs_avg:.4f} | {'Acc'}: {clients_accs_avg:.4f} | {'Sen'}: {clients_sens_avg:.4f} | {'Spe'}: {clients_spes_avg:.4f} | {'F1'}: {clients_f1_avg:.4f}"
+    elif "Dice" in list(cur_metric.keys()):
+        clients_dice_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "Dice" in k]
+        )
+        metric_dict = dict_append("mean_Dice", clients_dice_avg, metric_dict)
+
+        clients_hd_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "HD" in k]
+        )
+        metric_dict = dict_append("mean_HD", clients_hd_avg, metric_dict)
+
+        clients_iou_avg = np.mean(
+            [v[-1] for k, v in metric_dict.items() if "mean" not in k and "IoU" in k]
+        )
+        metric_dict = dict_append("mean_IoU", clients_iou_avg, metric_dict)
+
+        out_str = f" | {'Dice'}: {clients_dice_avg:.4f} | {'HD'}: {clients_hd_avg:.4f} | {'IoU'}: {clients_iou_avg:.4f}"
+    else:
+        raise NotImplementedError
+
+    return metric_dict, out_str
+
+def dict_append(key, value, dict_):
+    """
+    dict_[key] = list()
+    """
+    if key not in dict_:
+        dict_[key] = [value]
+    else:
+        dict_[key].append(value)
+    return dict_

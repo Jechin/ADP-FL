@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-21 14:15:33
+LastEditTime: 2024-02-21 15:13:42
 '''
 import torch
 from torch import nn, autograd
@@ -320,20 +320,20 @@ class LocalUpdateDP(object):
 
         return model
 
-    def test(self, model, testset):
-        model.eval()
-        test_loss = 0
-        correct = 0
-        with torch.no_grad():
-            for images, labels in testset:
-                images, labels = images.to(self.args.device), labels.to(self.args.device)
-                log_probs = model(images)
-                test_loss += self.loss_func(log_probs, labels).item()
-                y_pred = log_probs.data.max(1, keepdim=True)[1]
-                correct += y_pred.eq(labels.data.view_as(y_pred)).sum()
-        test_loss /= len(testset.dataset)
-        accuracy = 100. * correct / len(testset.dataset)
-        return accuracy, test_loss
+    # def test(self, model, testset):
+    #     model.eval()
+    #     test_loss = 0
+    #     correct = 0
+    #     with torch.no_grad():
+    #         for images, labels in testset:
+    #             images, labels = images.to(self.args.device), labels.to(self.args.device)
+    #             log_probs = model(images)
+    #             test_loss += self.loss_func(log_probs, labels).item()
+    #             y_pred = log_probs.data.max(1, keepdim=True)[1]
+    #             correct += y_pred.eq(labels.data.view_as(y_pred)).sum()
+    #     test_loss /= len(testset.dataset)
+    #     accuracy = 100. * correct / len(testset.dataset)
+    #     return accuracy, test_loss
     
     def loss_func(self, log_probs, labels):
         return self.loss_fun(log_probs, labels)
