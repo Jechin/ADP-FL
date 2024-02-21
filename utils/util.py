@@ -181,11 +181,6 @@ def setup_parser():
         type=str, default="",
         help="dataset root path",
     )
-    parser.add_argument(
-        "--save_path",
-        type=str, default="",
-        help="save root path",
-    )
 
     return parser
 
