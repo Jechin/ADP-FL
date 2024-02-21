@@ -31,6 +31,8 @@ def prepare_workflow(args, logging):
         args.lr = 0.001
         assert args.clients <= 6
         model = UNet(out_channels=1)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
         loss_fun = DiceLoss()
         # sites = ['BIDMC', 'HK',  'ISBI', 'ISBI_1.5', 'UCL']
         sites = [1, 2, 3, 4, 5, 6]
@@ -163,8 +165,9 @@ def prepare_workflow(args, logging):
         args.lr = 0.0003
         N_total_client = 20
         assert args.clients <= N_total_client
-
         model = DenseNet(num_classes=2)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
         loss_fun = nn.CrossEntropyLoss()
         train_sites = list(range(args.clients))
         val_sites = list(range(N_total_client))  # original clients

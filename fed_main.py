@@ -113,13 +113,16 @@ if __name__ == "__main__":
     )
     lg.info("Client Weights: " + str(client_weights))
 
-    random.seed(123)
-    np.random.seed(123)
-    torch.manual_seed(123)
-    torch.cuda.manual_seed_all(123)
-    torch.cuda.manual_seed(123)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed(args.seed)
 
-    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.device_count() > 1:
+        device = "cuda"
+    else:
+        device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     lg.info(f"Device: {device}")
 
     
