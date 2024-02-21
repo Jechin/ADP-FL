@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-21 18:54:10
+LastEditTime: 2024-02-21 18:57:01
 '''
 import torch
 from torch import nn, autograd
@@ -279,7 +279,7 @@ class LocalUpdateDP(object):
                 sensitivity_params[name] = 2 * clip_m
                 distance = torch.norm(param - origin_model_dict[name], 2)**0.5
                 param.data = origin_model_dict[name] + (clip_m / distance if clip_m < distance else 1) * (param.data - origin_model_dict[name])
-        model.to(self.args.device)
+        model.to(self.device)
         return sensitivity_params
 
     def add_noise(self, model, sigma):
