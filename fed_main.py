@@ -38,9 +38,14 @@ if __name__ == "__main__":
     parser = setup_parser()
     args = parser.parse_args()
 
-    args.save_path = "./experiments/checkpoint/{}/seed{}".format(
-        args.data, args.seed
-    )
+    if args.save_path != "":
+        os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
+            args.data, args.seed
+        ))
+    else: 
+        args.save_path = "./experiments/checkpoint/{}/seed{}".format(
+            args.data, args.seed
+        )
     exp_folder = "{}_rounds{}_lr{}_batch{}_N{}_eps{}_delta{}".format(
         args.mode,
         args.rounds,
