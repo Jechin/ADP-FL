@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-21 16:26:07
+LastEditTime: 2024-02-21 19:13:14
 '''
 import sys, os
 
@@ -221,7 +221,7 @@ class FedTrainner(object):
             self.logging.info("Round {:3d}, Time:  {:.2f}s".format(iter, t_end - t_start))
             if self.args.adp_round and iter > 1:
                 self.adaptive_rounds(iter)
-            if iter == 3:
+            if iter == 3 and self.args.debug:
                 break
 
         self.logging.info("=====================FL completed=====================")
