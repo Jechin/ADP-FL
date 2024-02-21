@@ -38,8 +38,29 @@ if __name__ == "__main__":
     parser = setup_parser()
     args = parser.parse_args()
 
-    args.save_path = os.path.join(args.save_path, "test_folder")
-    args.data_path = "/Users/jechin/github/miccai/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train"
+    args.save_path = "./experiments/checkpoint/{}/seed{}".format(
+        args.data, args.seed
+    )
+    exp_folder = "{}_rounds{}_lr{}_batch{}_N{}_eps{}_delta{}".format(
+        args.mode,
+        args.rounds,
+        args.lr,
+        args.batch,
+        args.clients,
+        args.epsilon,
+        args.delta
+    )
+    if args.debug:
+        exp_folder = exp_folder + "_debug"
+    if args.test:
+        exp_folder = exp_folder + "_test"
+    if args.adp_noise:
+        exp_folder = exp_folder + "_adpnoise"
+
+    args.save_path = os.path.join(args.save_path, exp_folder)
+    if not args.test:
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
     SAVE_PATH = args.save_path
 
     # Set up logging
@@ -56,7 +77,6 @@ if __name__ == "__main__":
     lg = logging.getLogger(f"{args.mode}-{get_timestamp()}")
     
     lg.info(args)
-    lg.info("test")
 
     generalize_sites = None
     (
@@ -88,6 +108,12 @@ if __name__ == "__main__":
     )
     lg.info("Client Weights: " + str(client_weights))
 
+    random.seed(123)
+    np.random.seed(123)
+    torch.manual_seed(123)
+    torch.cuda.manual_seed_all(123)
+    torch.cuda.manual_seed(123)
+
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     lg.info(f"Device: {device}")
 
@@ -100,6 +126,7 @@ if __name__ == "__main__":
     trainer_dict = {
         "fedavg": FedTrainner,
         "dpsgd": FedTrainner,
+        "no_dp": FedTrainner,
     }
     TrainerClass = trainer_dict[args.mode]
 

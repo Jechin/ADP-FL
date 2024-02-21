@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-18 22:26:01
+LastEditTime: 2024-02-21 11:02:26
 '''
 import sys, os
 
@@ -104,10 +104,17 @@ class FedTrainner(object):
         # clients = [LocalUpdateDP(args=self.args, dataset=dataset_train, idxs=dict_users[i]) for i in range(args.num_users)]
         train_clients = [
             LocalUpdateDP(
-                args=self.args, loader=train_loaders[idx], loss_fun=loss_fun, device=self.device, logging=self.logging, idx=idx
+                args=self.args, 
+                train_loader=train_loaders[idx], 
+                val_loader=val_loaders[idx],
+                test_loader=test_loaders[idx],
+                loss_fun=loss_fun, 
+                device=self.device, 
+                logging=self.logging, 
+                idx=idx
             ) for idx in range(len(train_loaders))
         ]
-        self.logging.info("=====================Training Start=====================") # TODO 添加====
+        self.logging.info("=====================Training Start=====================") 
         for iter in range(self.args.rounds):
             self.logging.info("------------ Round({:^5d}/{:^5d}) ------------".format(iter, self.args.rounds))
             t_start = time.time()
@@ -117,6 +124,7 @@ class FedTrainner(object):
                 iter=iter, 
                 rounds=self.args.rounds
             )
+            self.logging.info(f"sigma: {sigma}")
             w_locals, loss_locals = [], []
             if self.sample_rate < 1:
                 self.aggregation_idxs = random.sample(
@@ -149,6 +157,8 @@ class FedTrainner(object):
         sigma_sqr = (rounds - iter) / (epsilon**2 / (2 * np.log(1 / delta)) - self.used_sigma_reciprocal)
         self.sigma.append(sigma_sqr**0.5)
         self.used_sigma_reciprocal += 1 / sigma_sqr
+        if iter == 1:
+            self.logging.info(f"sigma_0: {self.sigma[0]} , sigma_1: {sigma_sqr**0.5}")
         return sigma_sqr**0.5
     
     def adaptive_rounds(self, acc=None):

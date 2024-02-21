@@ -37,31 +37,34 @@ def setup_parser():
     parser.add_argument(
         "-VN", "--virtual_clients", help="The number of virtual clients", type=int, default=1
     )
-    parser.add_argument("--lr", type=float, default=0.001, help="learning rate")
+    parser.add_argument("--lr", type=float, default=0.0003, help="learning rate")
     parser.add_argument(
         "--lr_decay", type=float, default=-1, help="learning rate decay for scheduler"
     )
     parser.add_argument(
         "--early", action="store_true", help="early stop w/o improvement over 20 epochs"
     )
-    parser.add_argument("--batch", type=int, default=128, help="batch size")
+    parser.add_argument("--batch", type=int, default=16, help="batch size")
     parser.add_argument("--rounds", type=int, default=100, help="iterations for communication")
     parser.add_argument("--local_epochs", type=int, default=1, help="local training epochs")
     parser.add_argument("--mode", type=str, default="fedavg", help="different FL algorithms")
+    parser.add_argument(
+        "--adp_noise", action="store_true", help="add adaptive noise"
+    )
     parser.add_argument(
         "--pretrain", action="store_true", help="Use Alexnet/ResNet pretrained on Imagenet"
     )
     # Experiment settings
     parser.add_argument("--exp", type=str, default=None, help="exp name")
     parser.add_argument(
-        "--save_path", type=str, default="./checkpoint/", help="path to save the checkpoint"
+        "--save_path", type=str, default="./experiments/checkpoint/", help="path to save the checkpoint"
     )
     parser.add_argument(
         "--resume", action="store_true", help="resume training from the save path checkpoint"
     )
     parser.add_argument("--gpu", type=str, default="0", help='gpu device number e.g., "0,1,2"')
     parser.add_argument("--seed", type=int, default=0, help="random seed")
-    parser.add_argument("--debug", action="store_false", help="debug mode")
+    parser.add_argument("--debug", action="store_true", help="debug mode")
     # Data settings
     parser.add_argument(
         "--data", type=str, default="RSNA-ICH", help="Different dataset: cifar10, cifar10c"
@@ -169,6 +172,11 @@ def setup_parser():
         "--ada_prog",
         action="store_true",
         help="VN = ceil(vn/2 * self.virtual_clients), progressively reaching optimal VN",
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str, default="",
+        help="dataset root path",
     )
 
     return parser

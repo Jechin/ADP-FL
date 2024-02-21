@@ -101,11 +101,10 @@ class ProstateDataset(Dataset):
         seed=0,
         freerider=False,
         randrot=None,
+        path="",
     ):
         path = (
-            "../data_preparation/dataset_2D"    # TODO: change the path here
-            if not local
-            else "../data_preparation/dataset_2D"
+            "./dataset/Prostate/dataset_2D" if path != "" else path
         )
         sites = {
             1: "I2CVB",

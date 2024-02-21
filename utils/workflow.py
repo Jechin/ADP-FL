@@ -7,13 +7,17 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 import pandas as pd
+import monai.transforms as monai_transforms
 from nets.models import DenseNet, UNet
 from utils.datasets import split_df, split_dataset, balance_split_dataset
+from utils.loss import DiceLoss
 from dataset.dataset import (
     ProstateDataset,
     DFDataset,
     DatasetSplit,
 )
+
+
 
 def prepare_workflow(args, logging):
     assert args.data in [
@@ -23,8 +27,140 @@ def prepare_workflow(args, logging):
     train_loaders, val_loaders, test_loaders = [], [], []
     trainsets, valsets, testsets = [], [], []
     if args.data == "prostate":
-        return None
+        args.batch = 8
+        args.lr = 0.001
+        assert args.clients <= 6
+        model = UNet(out_channels=1)
+        loss_fun = DiceLoss()
+        # sites = ['BIDMC', 'HK',  'ISBI', 'ISBI_1.5', 'UCL']
+        sites = [1, 2, 3, 4, 5, 6]
+        train_sites = list(range(args.clients * args.virtual_clients))
+        val_sites = [1, 2, 3, 4, 5, 6]
+        keys = ["Image", "Mask"]
+        data_splits = [0.6, 0.2, 0.2]
+        train_data_sizes = []
+        transform_list = [
+            monai_transforms.Resized(keys, [256, 256]),
+            monai_transforms.ToTensord(keys),
+        ]
+
+        transform = monai_transforms.Compose(transform_list)
+
+        real_trainsets = []
+        if args.generalize:
+            if int(args.leave) in sites:
+                leave_idx = sites.index(int(args.leave))
+                sites.pop(leave_idx)
+                generalize_sites = [int(args.leave)]
+                logging.info("Source sites:" + str(sites))
+                logging.info("Unseen sites:" + str(generalize_sites))
+            else:
+                raise ValueError(f"Unkown leave dataset{args.leave}")
+
+            for site in sites:
+                trainset = ProstateDataset(
+                    transform=transform, site=site, split=0, splits=data_splits, seed=args.seed, path=args.data_path
+                )
+                valset = ProstateDataset(
+                    transform=transform, site=site, split=1, splits=data_splits, seed=args.seed, path=args.data_path
+                )
+                logging.info(f"[Client {site}] Train={len(trainset)}, Val={len(valset)}")
+                trainsets.append(trainset)
+                valsets.append(valset)
+            for site in generalize_sites:
+                trainset = ProstateDataset(
+                    transform=transform, site=site, split=0, splits=data_splits, seed=args.seed, path=args.data_path
+                )
+                valset = ProstateDataset(
+                    transform=transform, site=site, split=1, splits=data_splits, seed=args.seed, path=args.data_path
+                )
+                testset = ProstateDataset(
+                    transform=transform, site=site, split=2, splits=data_splits, seed=args.seed, path=args.data_path
+                )
+                wholeset = torch.utils.data.ConcatDataset([trainset, valset, testset])
+                logging.info(f"[Unseen Client {site}] Test={len(wholeset)}")
+                testsets.append(wholeset)
+        else:
+            for site in sites:
+                if site == args.free:
+                    trainset = ProstateDataset(
+                        transform=transform,
+                        site=site,
+                        split=0,
+                        splits=data_splits,
+                        seed=args.seed,
+                        freerider=True,
+                    )
+                    valset = ProstateDataset(
+                        transform=transform, site=site, split=1, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    testset = ProstateDataset(
+                        transform=transform, site=site, split=2, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    logging.info(
+                        f"[Free Rider Client {site}] Train={len(trainset)}, Val={len(valset)}, Test={len(testset)}"
+                    )
+                elif site == args.noisy:
+                    trainset = ProstateDataset(
+                        transform=transform,
+                        site=site,
+                        split=0,
+                        splits=data_splits,
+                        seed=args.seed,
+                        randrot=transforms.RandomRotation(degrees=(1, 179)),
+                    )
+                    valset = ProstateDataset(
+                        transform=transform, site=site, split=1, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    testset = ProstateDataset(
+                        transform=transform, site=site, split=2, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    logging.info(
+                        f"[Noisy Client {site}] Train={len(trainset)}, Val={len(valset)}, Test={len(testset)}"
+                    )
+                else:
+                    trainset = ProstateDataset(
+                        transform=transform, site=site, split=0, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    valset = ProstateDataset(
+                        transform=transform, site=site, split=1, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+                    testset = ProstateDataset(
+                        transform=transform, site=site, split=2, splits=data_splits, seed=args.seed, path=args.data_path
+                    )
+
+                    logging.info(
+                        f"[Client {site}] Train={len(trainset)}, Val={len(valset)}, Test={len(testset)}"
+                    )
+                train_data_sizes.append(len(trainset))
+                real_trainsets.append(trainset)
+                valsets.append(valset)
+                testsets.append(testset)
+
+            if args.merge:
+                valset = torch.utils.data.ConcatDataset(valsets)
+                testset = torch.utils.data.ConcatDataset(testsets)
+
+            if not "no" in args.leave:
+                if int(args.leave) in sites:
+                    leave_idx = sites.index(int(args.leave))
+                    sites.pop(leave_idx)
+                    trainsets.pop(leave_idx)
+                    logging.info("New sites:" + str(sites))
+                    generalize_sites = [int(args.leave)]
+                else:
+                    raise ValueError(f"Unkown leave dataset{args.leave}")
+
+            if args.clients < 6:
+                idx = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
+                trainsets = [real_trainsets[i] for i in idx]
+                sites = [sites[i] for i in idx]
+            else:
+                trainsets = real_trainsets
+
     elif args.data == "RSNA-ICH":
+        args.batch = 16
+        args.lr = 0.0003
         N_total_client = 20
         assert args.clients <= N_total_client
 
@@ -62,21 +198,23 @@ def prepare_workflow(args, logging):
             ]
         )
         real_trainsets = []
+        root_dir = "./dataset/RSNA-ICH/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train" \
+            if args.data_path is "" else args.data_path
         for idx in range(N_total_client):
             trainset = DFDataset(
-                root_dir=args.data_path,    # TODO: change the path here
+                root_dir=root_dir,
                 data_frame=train_dfs[idx],
                 transform=transform_list,
                 site_idx=idx,
             )
             valset = DFDataset(
-                root_dir=args.data_path,
+                root_dir=root_dir,
                 data_frame=val_dfs[idx],
                 transform=transform_test,
                 site_idx=idx,
             )
             testset = DFDataset(
-                root_dir=args.data_path,
+                root_dir=root_dir,
                 data_frame=test_dfs[idx],
                 transform=transform_test,
                 site_idx=idx,
@@ -96,15 +234,8 @@ def prepare_workflow(args, logging):
         if args.clients < N_total_client:
             idx = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
             trainsets = [real_trainsets[i] for i in idx]
-        
-        # for c_idx, client_trainset in enumerate(real_trainsets):
-        #     dict_users = split_dataset(client_trainset, args.virtual_clients)
-        #     for v_idx in range(args.virtual_clients):
-        #         virtual_trainset = DatasetSplit(
-        #             client_trainset, dict_users[v_idx], c_idx, v_idx
-        #         )
-        #         trainsets.append(virtual_trainset)
-        #         logging.info(f"[Virtual Client {c_idx}-{v_idx}] Train={len(virtual_trainset)}")
+        else:
+            trainsets = real_trainsets
     else:
         raise NotImplementedError
 
