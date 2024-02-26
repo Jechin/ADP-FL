@@ -124,6 +124,7 @@ if __name__ == "__main__":
     else:
         device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     lg.info(f"Device: {device}")
+    print(f"Device: {device}")
 
     
     from torch.utils.tensorboard import SummaryWriter
