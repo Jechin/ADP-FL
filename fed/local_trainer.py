@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-25 12:16:37
+LastEditTime: 2024-02-27 00:23:11
 '''
 import torch
 from torch import nn, autograd
@@ -165,7 +165,10 @@ class LocalUpdateDP(object):
         
         if self.args.mode != 'no_dp' and sigma != None:
             # clip gradients and add noises
-            sensitivity_params = self.clip_gradients(model, beta_clip_fact, origin_model, model_estimate)
+            if self.args.adp_noise:
+                sensitivity_params = self.clip_gradients(model, beta_clip_fact, origin_model, model_estimate)
+            else:
+                self.clip_gradients_normal_l2(model, origin_model, C_for_clip)
             
             g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
             if self.args.debug:
@@ -288,6 +291,16 @@ class LocalUpdateDP(object):
                 param.data = origin_model_dict[name] - (clip_m / distance if clip_m < distance else 1) * (origin_model_dict[name] - param.data)
         model.to(self.device)
         return sensitivity_params
+
+    def clip_gradients_normal_l2(self, model, origin_model, C):
+        model.to("cpu")
+        for name, param in model.named_parameters():
+            if name in origin_model.state_dict():
+                distance = torch.norm(param - origin_model.state_dict()[name], 2)
+                if distance > C:
+                    param.data = origin_model.state_dict()[name] + (param - origin_model.state_dict()[name]) * (C / distance if distance > C else 1)
+        model.to(self.device)
+        return model
 
     def add_noise(self, model, sigma):
         for p in model.parameters():
