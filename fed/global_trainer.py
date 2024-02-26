@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-22 14:34:25
+LastEditTime: 2024-02-27 00:57:04
 '''
 import sys, os
 
@@ -116,6 +116,8 @@ class FedTrainner(object):
         ]
         self.logging.info("=====================FL Start=====================") 
         for iter in range(self.args.rounds):
+            if iter >= self.args.rounds:
+                break
             self.logging.info("------------ Round({:^5d}/{:^5d}) Train ------------".format(iter, self.args.rounds))
             t_start = time.time()
             sigma = self._calculate_sigma(
