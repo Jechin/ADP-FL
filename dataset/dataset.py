@@ -104,7 +104,7 @@ class ProstateDataset(Dataset):
         path="",
     ):
         path = (
-            "./dataset/Prostate/dataset_2D" if path != "" else path
+            "./dataset/Prostate/dataset_2D" if path == "" else path
         )
         sites = {
             1: "I2CVB",
@@ -112,10 +112,10 @@ class ProstateDataset(Dataset):
             3: "NCI_ISBI_3T",
             4: "NCI_ISBI_DX",
             5: "Promise12",
-            6: "ProstateX",
+            6: "PROSTATEx",
         }
 
-        data_list = json.load(open(os.path.join('./dataset/Prostate', f"{sites[site]}.json")))
+        data_list = json.load(open(os.path.join('./dataset/Prostate/datalist_2D', f"client_{sites[site]}.json")))
         names = ["training", "validation", "testing"]
 
         self.data_list = data_list[names[split]]

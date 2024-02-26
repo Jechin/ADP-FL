@@ -181,6 +181,7 @@ def setup_parser():
         type=str, default="",
         help="dataset root path",
     )
+    parser.add_argument("--clip", type=float, default=0, help="Gradient clip")
 
     return parser
 

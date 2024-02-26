@@ -29,6 +29,7 @@ def prepare_workflow(args, logging):
     if args.data == "prostate":
         args.batch = 8
         args.lr = 0.001
+        args.C = 0.0002 if args.clip == 0 else args.clip
         assert args.clients <= 6
         model = UNet(out_channels=1)
         if torch.cuda.device_count() > 1:
@@ -163,6 +164,7 @@ def prepare_workflow(args, logging):
     elif args.data == "RSNA-ICH":
         args.batch = 16
         args.lr = 0.0003
+        args.C = 0.002 if args.clip == 0 else args.clip
         N_total_client = 20
         assert args.clients <= N_total_client
         model = DenseNet(num_classes=2)

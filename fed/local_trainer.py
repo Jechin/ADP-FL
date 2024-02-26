@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-21 18:57:01
+LastEditTime: 2024-02-25 12:16:37
 '''
 import torch
 from torch import nn, autograd
@@ -42,7 +42,9 @@ class LocalUpdateDP(object):
 
     def train(self, model, sigma=None):
         optimizer = torch.optim.SGD(model.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                        optimizer, T_max=self.args.rounds
+                    )
         loss_all = 0
         segmentation = "UNet" in model.__class__.__name__
         train_acc = 0.0 if not segmentation else {}
@@ -141,11 +143,15 @@ class LocalUpdateDP(object):
         )
 
         g_k_1 = self._compute_gradiant(old_model=w_k_2, new_model=w_k_1)
+        model_estimate = self._compute_model(old_model=w_k_1, gradient=g_k_1)
+        gradient_estimate = self._compute_gradiant(old_model=origin_model, new_model=model_estimate)
 
-        C_for_clip = self._compute_norm_l2_model_dict(g_k_1)**2
+        # C_for_clip = self._compute_norm_l2_model_dict(gradient_estimate)
+        g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
+        C_for_clip = self.args.C
         # TODO : Adaptive C 
         beta_clip_fact = self._compute_beta(w_k_1, g_k_1, C_for_clip)
-        g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
+        
         if self.args.debug:
             self.logging.info("Site-{:<5s} | before add noise model norm: {:.8f}".format(
                 str(self.idx), 
@@ -159,7 +165,7 @@ class LocalUpdateDP(object):
         
         if self.args.mode != 'no_dp' and sigma != None:
             # clip gradients and add noises
-            sensitivity_params = self.clip_gradients(model, beta_clip_fact, origin_model, w_k_1.state_dict(), g_k_1)
+            sensitivity_params = self.clip_gradients(model, beta_clip_fact, origin_model, model_estimate)
             
             g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
             if self.args.debug:
@@ -176,7 +182,7 @@ class LocalUpdateDP(object):
                 self.add_noise_per_param(model, sensitivity_params, sigma)
             # self.add_noise_per_param_on_g(model, sensitivity_params, sigma, g_all, origin_model)
             else:
-                self.add_noise(model, sigma*C_for_clip)
+                self.add_noise(model, sigma*2*C_for_clip)
             
             norm = 0
             for name, param in model.named_parameters():
@@ -266,19 +272,20 @@ class LocalUpdateDP(object):
         return loss, acc
 
     
-    def clip_gradients(self, model, beta, origin_model, model_weights, gradient):
+    def clip_gradients(self, model, beta, origin_model, model_estimate):
         sensitivity_params = {}
         # get dict of model
         origin_model_dict = origin_model.state_dict()
+        model_estimate_dict = model_estimate.to("cpu").state_dict()
         model.to("cpu")
         # each param in model.parameters(), clip_m = beta/2 * |model_weights - gradient|, param = min(max(param, param_orgin_model - clip_m), param_orgin_model + clip_m)
         for name, param in model.named_parameters():
-            if name in model_weights and name in gradient:
+            if name in origin_model_dict and name in model_estimate_dict:
                 # clip_m = beta/2 * |model_weights - gradient|
-                clip_m = beta / 2 * torch.norm(model_weights[name] - gradient[name], 2)**0.5
+                clip_m = beta / 2 * torch.norm(model_estimate_dict[name], 2)
                 sensitivity_params[name] = 2 * clip_m
-                distance = torch.norm(param - origin_model_dict[name], 2)**0.5
-                param.data = origin_model_dict[name] + (clip_m / distance if clip_m < distance else 1) * (param.data - origin_model_dict[name])
+                distance = torch.norm(param - origin_model_dict[name], 2)
+                param.data = origin_model_dict[name] - (clip_m / distance if clip_m < distance else 1) * (origin_model_dict[name] - param.data)
         model.to(self.device)
         return sensitivity_params
 
@@ -356,7 +363,7 @@ class LocalUpdateDP(object):
         new_param = new_model.to("cpu").state_dict()
         gradients = {}
         for name in old_param.keys():
-            gradients[name] = new_param[name] - old_param[name]
+            gradients[name] = old_param[name] - new_param[name]
         return gradients
     
     def _compute_beta(self, model, gradient, C):
@@ -365,7 +372,7 @@ class LocalUpdateDP(object):
         for name in model_weights.keys():
             param_diff = model_weights[name] - gradient[name]  # w_k_1 - g_k_1
             beta_clip_fact += torch.norm(param_diff, 2).item()**2
-        beta_clip_fact = C / beta_clip_fact  # Taking the square root to get the L2 norm
+        beta_clip_fact = 2 * C / beta_clip_fact**0.5  # Taking the square root to get the L2 norm
         self.logging.info(f"beta_clip_fact: {beta_clip_fact}")
         return beta_clip_fact
     
@@ -381,3 +388,10 @@ class LocalUpdateDP(object):
             norm += torch.norm(param, 2).item()**2
         return norm**0.5
     
+    def _compute_model(self, old_model, gradient):
+        model_copy = copy.deepcopy(old_model).to("cpu")
+        for name, param in model_copy.named_parameters():
+            if name in gradient:
+                param.data -= gradient[name]
+        
+        return model_copy
