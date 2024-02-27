@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 13:14:37
+LastEditTime: 2024-02-27 23:48:15
 '''
 import sys, os
 
@@ -109,7 +109,7 @@ class FedTrainner(object):
                 val_loader=val_loaders[idx],
                 test_loader=test_loaders[idx],
                 loss_fun=loss_fun, 
-                optimizer=optim.Adam(params=self.server_model.parameters(), lr=self.args.lr, amsgrad=True),
+                model=copy.deepcopy(self.server_model),
                 device=self.device, 
                 logging=self.logging, 
                 idx=idx
@@ -138,7 +138,7 @@ class FedTrainner(object):
                 self.aggregation_idxs = list(range(len(self.client_models)))
             for idx in self.aggregation_idxs:
                 local = train_clients[idx]
-                w, loss = local.train(model=copy.deepcopy(self.server_model).to(self.device), sigma=sigma)
+                w, loss = local.train(sigma=sigma)
                 w_locals.append(copy.deepcopy(w))
                 loss_locals.append(copy.deepcopy(loss))
             
@@ -146,6 +146,9 @@ class FedTrainner(object):
             w_glob = FedWeightAvg(w_locals, self.client_weights)
             # copy weight to net_glob
             self.server_model.load_state_dict(w_glob)
+            # update client model
+            for index in self.aggregation_idxs:
+                train_clients[index].update_model(self.server_model.to("cpu").state_dict())
 
             # validation
             self.logging.info("------------ Validation ------------")
@@ -153,7 +156,7 @@ class FedTrainner(object):
                 assert len(self.val_sites) == len(val_loaders)
                 for client_idx in self.aggregation_idxs:
                     local = train_clients[client_idx]
-                    val_loss, val_acc = local.test(model=self.server_model.to(self.device), mode="val")
+                    val_loss, val_acc = local.test(mode="val")
                     self.val_loss = dict_append(
                         f"client_{self.val_sites[client_idx]}", val_loss, self.val_loss
                     )

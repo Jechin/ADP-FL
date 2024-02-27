@@ -3,13 +3,14 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 16:49:47
+LastEditTime: 2024-02-27 23:47:15
 '''
 import torch
 from torch import nn, autograd
 # from utils.dp_mechanism import cal_sensitivity, cal_sensitivity_MA, Laplace, Gaussian_Simple, Gaussian_MA
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
+import torch.optim as optim
 import random
 from sklearn import metrics
 import copy
@@ -29,38 +30,45 @@ def metric_calc(gt, pred, score):
     return [tn, fp, fn, tp], auc, acc, sen, spe, f1
 
 class LocalUpdateDP(object):
-    def __init__(self, args, train_loader, val_loader, test_loader, loss_fun, optimizer ,device, logging, idx) -> None:
+    def __init__(self, args, train_loader, val_loader, test_loader, loss_fun, model ,device, logging, idx) -> None:
         self.args = args
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.loss_fun = loss_fun
         self.lr = args.lr
-        self.optimizer = optimizer
+        self.model = model
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.args.lr, amsgrad=True)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                        self.optimizer, T_max=self.args.rounds
+                    ) if args.lr_decay else None
         self.device = device
         self.logging = logging
         self.idx = idx
 
-    def train(self, model, sigma=None):
+    def update_model(self, model):
+        self.model.load_state_dict(model)
+
+    def train(self, sigma=None):
         # optimizer = torch.optim.SGD(model.parameters(), lr=self.lr)
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         #                 optimizer, T_max=self.args.rounds
         #             )
         optimizer = self.optimizer
         loss_all = 0
-        segmentation = "UNet" in model.__class__.__name__
+        segmentation = "UNet" in self.model.__class__.__name__
         train_acc = 0.0 if not segmentation else {}
         model_pred, label_gt, pred_prob = [], [], []
         num_sample_test = 0
-        origin_model = copy.deepcopy(model).to("cpu")
+        origin_model = copy.deepcopy(self.model).to("cpu")
         w_k_2 = None
         w_k_1 = None
 
         for step, data in enumerate(self.train_loader):
             if step == len(self.train_loader) - 2:
-                w_k_2 = copy.deepcopy(model).to("cpu")
+                w_k_2 = copy.deepcopy(self.model).to("cpu")
             if step == len(self.train_loader) - 1:
-                w_k_1 = copy.deepcopy(model).to("cpu")
+                w_k_1 = copy.deepcopy(self.model).to("cpu")
                 
             if self.args.data.startswith("prostate"):
                 inp = data["Image"]
@@ -71,11 +79,11 @@ class LocalUpdateDP(object):
                 target = data["Label"]
                 target = target.to(self.device)
             
-            model.to(self.device)
-            model.train()
+            self.model.to(self.device)
+            self.model.train()
             optimizer.zero_grad()
             inp = inp.to(self.device)
-            output = model(inp)
+            output = self.model(inp)
             
             if self.args.data.startswith("prostate"):
                 loss = self.loss_fun(output[:, 0, :, :], target)
@@ -110,7 +118,8 @@ class LocalUpdateDP(object):
 
             loss.backward()
             optimizer.step()
-            # scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
             
             loss_all += loss.item()
 
@@ -151,7 +160,7 @@ class LocalUpdateDP(object):
         gradient_estimate = self._compute_gradiant(old_model=origin_model, new_model=model_estimate)
 
         # C_for_clip = self._compute_norm_l2_model_dict(gradient_estimate)
-        g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
+        g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(self.model).to("cpu"))
         C_for_clip = self.args.C
         # TODO : Adaptive C 
         beta_clip_fact = self._compute_beta(w_k_1, g_k_1, C_for_clip)
@@ -159,7 +168,7 @@ class LocalUpdateDP(object):
         if self.args.debug:
             self.logging.info("Site-{:<5s} | before add noise model norm: {:.8f}".format(
                 str(self.idx), 
-                self._compute_norm_l2_model(model)
+                self._compute_norm_l2_model(self.model)
             ))
         
             self.logging.info("Site-{:<5s} | before clip gradiant norm: {:.8f}".format(
@@ -170,11 +179,11 @@ class LocalUpdateDP(object):
         if self.args.mode != 'no_dp' and sigma != None:
             # clip gradients and add noises
             if self.args.adp_noise:
-                sensitivity_params = self.clip_gradients(model, beta_clip_fact, origin_model, model_estimate)
+                sensitivity_params = self.clip_gradients(self.model, beta_clip_fact, origin_model, model_estimate)
             else:
-                self.clip_gradients_normal_l2(model, origin_model, C_for_clip)
+                self.clip_gradients_normal_l2(self.model, origin_model, C_for_clip)
             
-            g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(model).to("cpu"))
+            g_all = self._compute_gradiant(old_model=origin_model, new_model=copy.deepcopy(self.model).to("cpu"))
             if self.args.debug:
                 self.logging.info("Site-{:<5s} | after clip gradiant norm: {:.8f}".format(
                     str(self.idx), 
@@ -182,31 +191,31 @@ class LocalUpdateDP(object):
                 ))
                 self.logging.info("Site-{:<5s} | after clip model norm: {:.8f}".format(
                     str(self.idx), 
-                    self._compute_norm_l2_model(model)
+                    self._compute_norm_l2_model(self.model)
                 ))
 
             if self.args.adp_noise:
-                self.add_noise_per_param(model, sensitivity_params, sigma)
+                self.add_noise_per_param(self.model, sensitivity_params, sigma)
             # self.add_noise_per_param_on_g(model, sensitivity_params, sigma, g_all, origin_model)
             else:
-                self.add_noise(model, sigma*2*C_for_clip)
+                self.add_noise(self.model, sigma*2*C_for_clip)
             
             norm = 0
-            for name, param in model.named_parameters():
+            for name, param in self.model.named_parameters():
                 if name in sensitivity_params:
                     norm += torch.norm(param, 2).item()**2
             self.logging.info("Site-{:<5s} | after add noise norm: {:.8f}".format(str(self.idx), norm**0.5))
-        return model.state_dict(), loss
+        return self.model.state_dict(), loss
     
-    def test(self, model, mode):
+    def test(self, mode):
         assert mode in ["val", "test"]
         test_loader = self.val_loader if mode == "val" else self.test_loader
-        model.to(self.device)
-        model.eval()
+        self.model.to(self.device)
+        self.model.eval()
         loss_all = 0
         num_sample_test = 0
 
-        segmentation = "UNet" in model.__class__.__name__
+        segmentation = "UNet" in self.model.__class__.__name__
         test_acc = 0.0 if not segmentation else {}
         model_pred, label_gt, pred_prob = [], [], []
         for _, data in enumerate(test_loader):
@@ -220,7 +229,7 @@ class LocalUpdateDP(object):
                 target = target.to(self.device)
 
             inp = inp.to(self.device)
-            output = model(inp)
+            output = self.model(inp)
 
             if self.args.data.startswith("prostate"):
                 loss = self.loss_fun(output[:, 0, :, :], target)
@@ -275,7 +284,7 @@ class LocalUpdateDP(object):
                 "Spe": metric_res[4],
                 "F1": metric_res[5],
             }
-        model.to("cpu")
+        self.model.to("cpu")
         return loss, acc
 
     
@@ -343,21 +352,6 @@ class LocalUpdateDP(object):
         model.load_state_dict(model_dict)
 
         return model
-
-    # def test(self, model, testset):
-    #     model.eval()
-    #     test_loss = 0
-    #     correct = 0
-    #     with torch.no_grad():
-    #         for images, labels in testset:
-    #             images, labels = images.to(self.args.device), labels.to(self.args.device)
-    #             log_probs = model(images)
-    #             test_loss += self.loss_func(log_probs, labels).item()
-    #             y_pred = log_probs.data.max(1, keepdim=True)[1]
-    #             correct += y_pred.eq(labels.data.view_as(y_pred)).sum()
-    #     test_loss /= len(testset.dataset)
-    #     accuracy = 100. * correct / len(testset.dataset)
-    #     return accuracy, test_loss
     
     def loss_func(self, log_probs, labels):
         return self.loss_fun(log_probs, labels)
