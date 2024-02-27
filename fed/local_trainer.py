@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 00:23:11
+LastEditTime: 2024-02-27 13:18:30
 '''
 import torch
 from torch import nn, autograd
@@ -29,22 +29,24 @@ def metric_calc(gt, pred, score):
     return [tn, fp, fn, tp], auc, acc, sen, spe, f1
 
 class LocalUpdateDP(object):
-    def __init__(self, args, train_loader, val_loader, test_loader, loss_fun, device, logging, idx) -> None:
+    def __init__(self, args, train_loader, val_loader, test_loader, loss_fun, optimizer ,device, logging, idx) -> None:
         self.args = args
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.loss_fun = loss_fun
         self.lr = args.lr
+        self.optimizer = optimizer
         self.device = device
         self.logging = logging
         self.idx = idx
 
     def train(self, model, sigma=None):
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                        optimizer, T_max=self.args.rounds
-                    )
+        # optimizer = torch.optim.SGD(model.parameters(), lr=self.lr)
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #                 optimizer, T_max=self.args.rounds
+        #             )
+        optimizer = self.optimizer
         loss_all = 0
         segmentation = "UNet" in model.__class__.__name__
         train_acc = 0.0 if not segmentation else {}
@@ -70,7 +72,8 @@ class LocalUpdateDP(object):
                 target = target.to(self.device)
             
             model.to(self.device)
-            model.zero_grad()
+            model.train()
+            optimizer.zero_grad()
             inp = inp.to(self.device)
             output = model(inp)
             
@@ -107,7 +110,7 @@ class LocalUpdateDP(object):
 
             loss.backward()
             optimizer.step()
-            scheduler.step()
+            # scheduler.step()
             
             loss_all += loss.item()
 
@@ -131,7 +134,7 @@ class LocalUpdateDP(object):
                 "F1": metric_res[5],
             }
         
-        self.lr = scheduler.get_last_lr()[0]
+        # self.lr = scheduler.get_last_lr()[0]
 
         out_str = ""
         for k, v in acc.items():

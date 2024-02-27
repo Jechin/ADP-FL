@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 00:57:04
+LastEditTime: 2024-02-27 13:14:37
 '''
 import sys, os
 
@@ -109,6 +109,7 @@ class FedTrainner(object):
                 val_loader=val_loaders[idx],
                 test_loader=test_loaders[idx],
                 loss_fun=loss_fun, 
+                optimizer=optim.Adam(params=self.server_model.parameters(), lr=self.args.lr, amsgrad=True),
                 device=self.device, 
                 logging=self.logging, 
                 idx=idx
