@@ -110,7 +110,7 @@ class ProstateDataset(Dataset):
             1: "I2CVB",
             2: "MSD",
             3: "NCI_ISBI_3T",
-            4: "NCI_ISBI_DX",
+            4: "NCI_ISBI_Dx",
             5: "Promise12",
             6: "PROSTATEx",
         }
