@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 13:18:30
+LastEditTime: 2024-02-27 16:49:47
 '''
 import torch
 from torch import nn, autograd
@@ -115,6 +115,7 @@ class LocalUpdateDP(object):
             loss_all += loss.item()
 
         loss = loss_all / len(self.train_loader)
+        # print(f"Site-{self.idx} | Train Loss: {loss_all}")
         if segmentation:
             acc = {
                 "Dice": train_acc["Dice"] / len(self.train_loader),

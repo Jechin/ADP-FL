@@ -182,6 +182,11 @@ def setup_parser():
         help="dataset root path",
     )
     parser.add_argument("--clip", type=float, default=0, help="Gradient clip")
+    parser.add_argument(
+        "--center",
+        action="store_true",
+        help="center training",
+    )
 
     return parser
 

@@ -37,7 +37,7 @@ def prepare_workflow(args, logging):
         loss_fun = DiceLoss()
         # sites = ['BIDMC', 'HK',  'ISBI', 'ISBI_1.5', 'UCL']
         sites = [1, 2, 3, 4, 5, 6]
-        train_sites = list(range(args.clients * args.virtual_clients))
+        train_sites = list(range(args.clients))
         val_sites = [1, 2, 3, 4, 5, 6]
         keys = ["Image", "Mask"]
         data_splits = [0.6, 0.2, 0.2]
@@ -165,7 +165,9 @@ def prepare_workflow(args, logging):
         args.batch = 16
         args.lr = 0.0003
         args.C = 0.002 if args.clip == 0 else args.clip
-        N_total_client = 20
+        N_total_client = 1 if args.center else 20
+        if args.center: 
+            args.clients = 1
         assert args.clients <= N_total_client
         model = DenseNet(num_classes=2)
         if torch.cuda.device_count() > 1:
