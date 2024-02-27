@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 23:47:15
+LastEditTime: 2024-02-27 23:55:34
 '''
 import torch
 from torch import nn, autograd
@@ -201,9 +201,8 @@ class LocalUpdateDP(object):
                 self.add_noise(self.model, sigma*2*C_for_clip)
             
             norm = 0
-            for name, param in self.model.named_parameters():
-                if name in sensitivity_params:
-                    norm += torch.norm(param, 2).item()**2
+            for _, param in self.model.named_parameters():
+                norm += torch.norm(param, 2).item()**2
             self.logging.info("Site-{:<5s} | after add noise norm: {:.8f}".format(str(self.idx), norm**0.5))
         return self.model.state_dict(), loss
     
