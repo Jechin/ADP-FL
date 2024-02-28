@@ -37,14 +37,14 @@ def setup_parser():
     parser.add_argument(
         "-VN", "--virtual_clients", help="The number of virtual clients", type=int, default=1
     )
-    parser.add_argument("--lr", type=float, default=0.0003, help="learning rate")
+    parser.add_argument("--lr", type=float, default=0, help="learning rate")
     parser.add_argument(
         "--lr_decay", type=float, default=-1, help="learning rate decay for scheduler"
     )
     parser.add_argument(
         "--early", action="store_true", help="early stop w/o improvement over 20 epochs"
     )
-    parser.add_argument("--batch", type=int, default=16, help="batch size")
+    parser.add_argument("--batch", type=int, default=0, help="batch size")
     parser.add_argument("--rounds", type=int, default=100, help="iterations for communication")
     parser.add_argument("--local_epochs", type=int, default=1, help="local training epochs")
     parser.add_argument("--mode", type=str, default="fedavg", help="different FL algorithms")
@@ -187,6 +187,8 @@ def setup_parser():
         action="store_true",
         help="center training",
     )
+    parser.add_argument("--round_factor", type=float, default=0.99, help="round factor")
+    parser.add_argument("--round_threshold", type=float, default=0.0001, help="round threshold")
 
     return parser
 

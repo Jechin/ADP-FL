@@ -17,20 +17,35 @@ from dataset.dataset import (
     DatasetSplit,
 )
 
-
-
-def prepare_workflow(args, logging):
+def prepare_args(args):
     assert args.data in [
         "prostate",
         "RSNA-ICH",
     ]
+    if args.data == "prostate":
+        assert args.clients <= 6
+        args.batch = 8 if args.batch == 0 else args.batch
+        args.lr = 0.001 if args.lr == 0 else args.lr
+        lr_to_C_dict = {
+            0.001: 0.02,
+            0.0003: 0.0002,
+        }
+        args.C = lr_to_C_dict[args.lr] if args.clip == 0 and args.lr in lr_to_C_dict.keys() else args.clip
+        args.rounds = 50 if args.debug else args.rounds
+    elif args.data == "RSNA-ICH":
+        args.batch = 16 if args.batch == 0 else args.batch
+        args.lr = 0.0003 if args.lr == 0 else args.lr
+        args.C = 0.002 if args.clip == 0 else args.clip
+        args.clients = 20 if args.client == 0 else args.clients
+        args.clients = 1 if args.center else args.clients
+        args.rounds = 50 if args.debug else args.rounds
+
+
+def prepare_workflow(args, logging):
+    
     train_loaders, val_loaders, test_loaders = [], [], []
     trainsets, valsets, testsets = [], [], []
     if args.data == "prostate":
-        args.batch = 8
-        args.lr = 0.001
-        args.C = 0.0002 if args.clip == 0 else args.clip
-        assert args.clients <= 6
         model = UNet(out_channels=1)
         if torch.cuda.device_count() > 1:
             model = nn.DataParallel(model)
@@ -49,7 +64,6 @@ def prepare_workflow(args, logging):
 
         transform = monai_transforms.Compose(transform_list)
 
-        real_trainsets = []
         if args.generalize:
             if int(args.leave) in sites:
                 leave_idx = sites.index(int(args.leave))
@@ -136,7 +150,7 @@ def prepare_workflow(args, logging):
                         f"[Client {site}] Train={len(trainset)}, Val={len(valset)}, Test={len(testset)}"
                     )
                 train_data_sizes.append(len(trainset))
-                real_trainsets.append(trainset)
+                trainsets.append(trainset)
                 valsets.append(valset)
                 testsets.append(testset)
 
@@ -156,18 +170,10 @@ def prepare_workflow(args, logging):
 
             if args.clients < 6:
                 idx = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
-                trainsets = [real_trainsets[i] for i in idx]
-                sites = [sites[i] for i in idx]
-            else:
-                trainsets = real_trainsets
+                train_sites = [sites[i] for i in idx]
 
     elif args.data == "RSNA-ICH":
-        args.batch = 16
-        args.lr = 0.0003
-        args.C = 0.002 if args.clip == 0 else args.clip
         N_total_client = 1 if args.center else 20
-        if args.center: 
-            args.clients = 1
         assert args.clients <= N_total_client
         model = DenseNet(num_classes=2)
         if torch.cuda.device_count() > 1:
@@ -204,7 +210,6 @@ def prepare_workflow(args, logging):
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
         )
-        real_trainsets = []
         root_dir = "./dataset/RSNA-ICH/research/dept8/qdou/data/RSNA-ICH/organized/stage_2_train" \
             if args.data_path is "" else args.data_path
         for idx in range(N_total_client):
@@ -230,7 +235,7 @@ def prepare_workflow(args, logging):
                 f"[Client {idx}] Train={len(trainset)}, Val={len(valset)}, Test={len(testset)}"
             )
             train_data_sizes.append(len(trainset))
-            real_trainsets.append(trainset)
+            trainsets.append(trainset)
             valsets.append(valset)
             testsets.append(testset)
 
@@ -239,10 +244,8 @@ def prepare_workflow(args, logging):
             testset = torch.utils.data.ConcatDataset(testsets)
 
         if args.clients < N_total_client:
-            idx = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
-            trainsets = [real_trainsets[i] for i in idx]
-        else:
-            trainsets = real_trainsets
+            train_sites = np.argsort(np.array(train_data_sizes))[::-1][: args.clients]
+
     else:
         raise NotImplementedError
 

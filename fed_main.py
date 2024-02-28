@@ -30,13 +30,14 @@ from nets.models import (
 from fed.global_trainer import FedTrainner
 from utils.util import setup_logger, get_timestamp, setup_parser
 from utils.datasets import split_df, split_dataset, balance_split_dataset
-from utils.workflow import prepare_workflow
+from utils.workflow import prepare_workflow, prepare_args
 
 
 
 if __name__ == "__main__":
     parser = setup_parser()
     args = parser.parse_args()
+    prepare_args(args)
 
     if args.save_path != "":
         os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
@@ -61,6 +62,8 @@ if __name__ == "__main__":
         exp_folder = exp_folder + "_test"
     if args.adp_noise:
         exp_folder = exp_folder + "_adpnoise"
+    if args.adp_round:
+        exp_folder = exp_folder + "_adpround"
 
     args.save_path = os.path.join(args.save_path, exp_folder)
     if not args.test:
@@ -98,18 +101,14 @@ if __name__ == "__main__":
     ) = prepare_workflow(args, lg)
 
     assert (
-        int(args.clients) == len(train_loaders) == len(train_sites)
-    ), f"Client num {args.clients}, train loader num {len(train_loaders)},\
-         train site num {len(train_sites)} do not match."
+        int(args.clients) == len(train_sites)
+    ), f"Client num {args.clients}, train site num {len(train_sites)} do not match."
     assert len(val_loaders) == len(val_sites)  # == int(args.clients)
-    train_total_len = sum([len(tr_set) for tr_set in train_sets])
+    train_total_len = sum([len(train_loaders[idx]) for idx in train_sites])
     client_weights = (
-        [len(tr_set) / train_total_len for tr_set in train_sets]
+        [len(train_loaders[idx]) / train_total_len for idx in train_sites]
         if args.weighted_avg
-        else [
-            1.0 / float(int(args.clients * args.sample_rate) * args.virtual_clients)
-            for i in range(int(args.clients * args.virtual_clients))
-        ]
+        else [ 1.0 / float(args.clients) ] * int(args.clients)
     )
     lg.info("Client Weights: " + str(client_weights))
 

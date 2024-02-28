@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 23:55:34
+LastEditTime: 2024-02-28 15:35:49
 '''
 import torch
 from torch import nn, autograd
@@ -352,9 +352,6 @@ class LocalUpdateDP(object):
 
         return model
     
-    def loss_func(self, log_probs, labels):
-        return self.loss_fun(log_probs, labels)
-    
     def get_grads(self, model):
         grads = []
         for p in model.parameters():
@@ -387,16 +384,10 @@ class LocalUpdateDP(object):
         return beta_clip_fact
     
     def _compute_norm_l2_model(self, model):
-        norm = 0
-        for _, param in model.named_parameters():
-            norm += torch.norm(param, 2).item()**2
-        return norm**0.5
+        return sum([torch.norm(param, 2).item()**2 for _, param in model.named_parameters()])**0.5
     
     def _compute_norm_l2_model_dict(self, model_dict):
-        norm = 0
-        for _, param in model_dict.items():
-            norm += torch.norm(param, 2).item()**2
-        return norm**0.5
+        return sum([torch.norm(param, 2).item()**2 for _, param in model_dict.items()])**0.5
     
     def _compute_model(self, old_model, gradient):
         model_copy = copy.deepcopy(old_model).to("cpu")

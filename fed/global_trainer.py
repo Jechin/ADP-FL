@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-27 23:48:15
+LastEditTime: 2024-02-28 16:05:04
 '''
 import sys, os
 
@@ -60,14 +60,14 @@ class FedTrainner(object):
         self.server_model = server_model
         self.train_sites = train_sites
         self.val_sites = val_sites
-        self.client_num = len(train_sites)
-        self.client_num_val = len(val_sites)
+        self.client_num_train = len(train_sites)
+        self.client_num = len(val_sites)
         self.sample_rate = args.sample_rate
         assert self.sample_rate > 0 and self.sample_rate <= 1
         self.aggregation_idxs = None
         self.aggregation_client_num = max(int(self.client_num * self.sample_rate), 1)
         self.client_weights = (
-            [1 / self.aggregation_client_num for i in range(self.aggregation_client_num)]
+            [1 / self.aggregation_client_num] * len(self.aggregation_client_num) # pure avg
             if client_weights is None
             else client_weights
         )
@@ -101,16 +101,15 @@ class FedTrainner(object):
         loss_fun,
         SAVE_PATH,
     ):
-        # clients = [LocalUpdateDP(args=self.args, dataset=dataset_train, idxs=dict_users[i]) for i in range(args.num_users)]
-        train_clients = [
+        self.clients = [
             LocalUpdateDP(
                 args=self.args, 
                 train_loader=train_loaders[idx], 
                 val_loader=val_loaders[idx],
                 test_loader=test_loaders[idx],
                 loss_fun=loss_fun, 
-                model=copy.deepcopy(self.server_model),
-                device=self.device, 
+                model=self.client_models[idx],
+                device=self.device,
                 logging=self.logging, 
                 idx=idx
             ) for idx in range(len(train_loaders))
@@ -131,13 +130,13 @@ class FedTrainner(object):
             w_locals, loss_locals = [], []
             if self.sample_rate < 1:
                 self.aggregation_idxs = random.sample(
-                    list(range(self.client_num)), self.aggregation_client_num
+                    list(range(self.client_num_train)), self.aggregation_client_num
                 )
             else:
                 self.aggregation_client_num = len(self.client_models)
                 self.aggregation_idxs = list(range(len(self.client_models)))
-            for idx in self.aggregation_idxs:
-                local = train_clients[idx]
+            for idx in self.train_sites:
+                local = self.clients[idx]
                 w, loss = local.train(sigma=sigma)
                 w_locals.append(copy.deepcopy(w))
                 loss_locals.append(copy.deepcopy(loss))
@@ -148,14 +147,14 @@ class FedTrainner(object):
             self.server_model.load_state_dict(w_glob)
             # update client model
             for index in self.aggregation_idxs:
-                train_clients[index].update_model(self.server_model.to("cpu").state_dict())
+                self.clients[index].update_model(self.server_model.to("cpu").state_dict())
 
             # validation
             self.logging.info("------------ Validation ------------")
             with torch.no_grad():
                 assert len(self.val_sites) == len(val_loaders)
                 for client_idx in self.aggregation_idxs:
-                    local = train_clients[client_idx]
+                    local = self.clients[client_idx]
                     val_loss, val_acc = local.test(mode="val")
                     self.val_loss = dict_append(
                         f"client_{self.val_sites[client_idx]}", val_loss, self.val_loss
@@ -243,8 +242,8 @@ class FedTrainner(object):
     
     def adaptive_rounds(self, iter):
         # TODO adaptive rounds
-        factor = 0.99
-        threshold = 0.0001
+        factor = self.args.round_factor
+        threshold = self.args.round_threshold
         if self.val_loss["mean"][iter-1] - self.val_loss["mean"][iter] < threshold:
             self.args.rounds = iter + int((self.args.rounds - iter) * factor)
     
