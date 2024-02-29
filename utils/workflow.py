@@ -36,7 +36,7 @@ def prepare_args(args):
         args.batch = 16 if args.batch == 0 else args.batch
         args.lr = 0.0003 if args.lr == 0 else args.lr
         args.C = 0.002 if args.clip == 0 else args.clip
-        args.clients = 20 if args.client == 0 else args.clients
+        args.clients = 20 if args.clients == 0 else args.clients
         args.clients = 1 if args.center else args.clients
         args.rounds = 50 if args.debug else args.rounds
 

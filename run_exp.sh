@@ -1,26 +1,19 @@
-conda activate dpfl
-
+seed_total=1
+current_time=$(date +"%Y%m%d-%H%M%S")
 # Run the experiment
-python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 1 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 2 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 3 -N 20
-
-python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 1 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 2 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 3 -N 20
-
-python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --seed 1 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 2 -N 20
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 3 -N 20
-
-python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 1 -N 6 -data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 2 -N 6 -data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed 3 -N 6 -data prostate
-
-python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 1 -N 6 -data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 2 -N 6 -data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode no_dp --adp_round --adp_noise --seed 3 -N 6 -data prostate
-
-python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --seed 1 -N 6 --data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --seed 2 -N 6 --data prostate
-# python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --seed 3 -N 6 --data prostate
+for ((i=1; i<=$seed_total; i++))
+do
+    # no_dp
+    python fed_main.py --adaclip --epsilon 10 --mode no_dp --seed $i -N 20 --save_path $current_time
+    # adp_noise and adp_round
+    python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed $i -N 20 --save_path $current_time --round_factor 0.99 --round_threshold 0.0001
+    # adp_noise
+    python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_noise --seed $i -N 20 --save_path $current_time 
+    
+    # no_dp
+    python fed_main.py --adaclip --epsilon 10 --mode no_dp --seed $i -N 6 -data prostate --save_path $current_time 
+    # adp_noise and adp_round
+    python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_round --adp_noise --seed $i -N 6 -data prostate --save_path $current_time --round_factor 0.99 --round_threshold 0.0005
+    # adp_noise
+    python fed_main.py --adaclip --epsilon 10 --mode dpsgd --adp_noise --seed $i -N 6 -data prostate --save_path $current_time
+done

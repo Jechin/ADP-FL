@@ -40,7 +40,7 @@ if __name__ == "__main__":
     prepare_args(args)
 
     if args.save_path != "":
-        os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
+        args.save_path = os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
             args.data, args.seed
         ))
     else: 
