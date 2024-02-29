@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-29 13:39:24
+LastEditTime: 2024-02-29 14:48:38
 '''
 import torch
 from torch import nn, autograd
@@ -306,11 +306,18 @@ class LocalUpdateDP(object):
 
     def clip_gradients_normal_l2(self, model, origin_model, C):
         model.to("cpu")
+        grad_norm = []
         for name, param in model.named_parameters():
             if name in origin_model.state_dict():
-                distance = torch.norm(param - origin_model.state_dict()[name], 2)
-                if distance > C:
-                    param.data = origin_model.state_dict()[name] + (param - origin_model.state_dict()[name]) * (C / distance if distance > C else 1)
+                grad_norm.append(torch.norm(origin_model.state_dict()[name] - param, 2))
+                # if distance > C:
+                #     param.data = origin_model.state_dict()[name] + (param - origin_model.state_dict()[name]) * (C / distance if distance > C else 1)
+        grad_norm = torch.asarray(grad_norm)
+        global_norm = torch.norm(grad_norm, 2)
+        norm_factor = torch.minimum(C / (global_norm + 1e-15), torch.tensor(1.0))
+        for name, param in model.named_parameters():
+            if name in origin_model.state_dict():
+                param.data = origin_model.state_dict()[name] + (param - origin_model.state_dict()[name]) * norm_factor
         model.to(self.device)
         return model
 
