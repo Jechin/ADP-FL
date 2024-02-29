@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-28 15:35:49
+LastEditTime: 2024-02-29 13:39:24
 '''
 import torch
 from torch import nn, autograd
@@ -198,7 +198,7 @@ class LocalUpdateDP(object):
                 self.add_noise_per_param(self.model, sensitivity_params, sigma)
             # self.add_noise_per_param_on_g(model, sensitivity_params, sigma, g_all, origin_model)
             else:
-                self.add_noise(self.model, sigma*2*C_for_clip)
+                self.add_noise(self.model, sigma)
             
             norm = 0
             for _, param in self.model.named_parameters():
@@ -299,7 +299,7 @@ class LocalUpdateDP(object):
                 # clip_m = beta/2 * |model_weights - gradient|
                 clip_m = beta / 2 * torch.norm(model_estimate_dict[name], 2)
                 sensitivity_params[name] = 2 * clip_m
-                distance = torch.norm(param - origin_model_dict[name], 2)
+                distance = torch.norm(origin_model_dict[name] - param, 2)
                 param.data = origin_model_dict[name] - (clip_m / distance if clip_m < distance else 1) * (origin_model_dict[name] - param.data)
         model.to(self.device)
         return sensitivity_params

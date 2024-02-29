@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-02-28 16:05:04
+LastEditTime: 2024-02-29 13:38:03
 '''
 import sys, os
 
@@ -124,7 +124,8 @@ class FedTrainner(object):
                 epsilon=self.args.epsilon, 
                 delta=self.args.delta, 
                 iter=iter, 
-                rounds=self.args.rounds
+                rounds=self.args.rounds,
+                sensitiviy=2*self.args.C
             )
             self.logging.info(f"sigma: {sigma}")
             w_locals, loss_locals = [], []
@@ -231,9 +232,9 @@ class FedTrainner(object):
 
         self.logging.info("=====================FL completed=====================")
 
-    def _calculate_sigma(self, epsilon, delta, iter, rounds):
+    def _calculate_sigma(self, epsilon, delta, iter, rounds, sensitiviy):
         # \sigma^2=\frac{T-t}{\frac{\epsilon^2}{2\ln(1/\delta)}-\sum_{i=1}^{t}\frac{1}{\sigma_i^2}}
-        sigma_sqr = (rounds - iter) / (epsilon**2 / (2 * np.log(1 / delta)) - self.used_sigma_reciprocal)
+        sigma_sqr = (rounds - iter) / (epsilon**2 / (2 * sensitiviy**2 * np.log(1 / delta)) - self.used_sigma_reciprocal)
         self.sigma.append(sigma_sqr**0.5)
         self.used_sigma_reciprocal += 1 / sigma_sqr
         if iter == 1:
