@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 15:04:41
+LastEditTime: 2024-03-01 15:13:42
 '''
 import sys, os
 
@@ -146,6 +146,8 @@ class FedTrainner(object):
                     sensitiviy=2*self.args.C
                 )
                 self.logging.info(f"sigma: {sigma}")
+            else:
+                sigma = None
             w_locals, loss_locals = [], []
             if self.sample_rate < 1:
                 self.aggregation_idxs = random.sample(
