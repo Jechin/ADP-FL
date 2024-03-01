@@ -29,6 +29,7 @@ def prepare_args(args):
         lr_to_C_dict = {
             0.001: 0.02,
             0.0003: 0.0002,
+            0.01: 0.02,
         }
         args.C = lr_to_C_dict[args.lr] if args.clip == 0 and args.lr in lr_to_C_dict.keys() else args.clip
         args.rounds = 50 if args.debug else args.rounds

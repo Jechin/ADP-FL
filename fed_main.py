@@ -97,16 +97,6 @@ if __name__ == "__main__":
 
     args.writer = SummaryWriter(args.log_path)
 
-    # setup trainer
-    # trainer_dict = {
-    #     "fedavg": FedTrainner,
-    #     "dpsgd": FedTrainner,
-    #     "no_dp": FedTrainner,
-    # }
-    # TrainerClass = trainer_dict[args.mode]
-
-    # original_server_model  = copy.deepcopy(server_model)
-
     trainer = FedTrainner(
         args,
         lg,

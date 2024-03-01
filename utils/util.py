@@ -190,6 +190,7 @@ def setup_parser():
     parser.add_argument("--round_factor", type=float, default=0.99, help="round factor")
     parser.add_argument("--round_threshold", type=float, default=0.0001, help="round threshold")
     parser.add_argument("--folder", type=str, default=None, help="folder name")
+    parser.add_argument("--no_dp", action="store_true", help="no dp")
     return parser
 
 def _eval_haus(pred, gt):

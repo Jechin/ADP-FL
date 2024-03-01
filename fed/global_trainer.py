@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 13:31:01
+LastEditTime: 2024-03-01 15:04:41
 '''
 import sys, os
 
@@ -137,14 +137,15 @@ class FedTrainner(object):
                 break
             self.logging.info("------------ Round({:^5d}/{:^5d}) Train ------------".format(iter, self.args.rounds))
             t_start = time.time()
-            sigma = self._calculate_sigma(
-                epsilon=self.args.epsilon, 
-                delta=self.args.delta, 
-                iter=iter, 
-                rounds=self.args.rounds,
-                sensitiviy=2*self.args.C
-            )
-            self.logging.info(f"sigma: {sigma}")
+            if not self.args.no_dp:
+                sigma = self._calculate_sigma(
+                    epsilon=self.args.epsilon, 
+                    delta=self.args.delta, 
+                    iter=iter, 
+                    rounds=self.args.rounds,
+                    sensitiviy=2*self.args.C
+                )
+                self.logging.info(f"sigma: {sigma}")
             w_locals, loss_locals = [], []
             if self.sample_rate < 1:
                 self.aggregation_idxs = random.sample(
