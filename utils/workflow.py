@@ -39,10 +39,42 @@ def prepare_args(args):
         args.clients = 20 if args.clients == 0 else args.clients
         args.clients = 1 if args.center else args.clients
         args.rounds = 50 if args.debug else args.rounds
+    if args.save_path != "":
+        args.save_path = os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
+            args.data, args.seed
+        ))
+    else: 
+        args.save_path = "./experiments/checkpoint/{}/seed{}".format(
+            args.data, args.seed
+        )
+    exp_folder = "{}_rounds{}_lr{}_batch{}_N{}_eps{}_delta{}".format(
+        args.mode,
+        args.rounds,
+        args.lr,
+        args.batch,
+        args.clients,
+        args.epsilon,
+        args.delta
+    )
+    if args.debug:
+        exp_folder = exp_folder + "_debug"
+    if args.test:
+        exp_folder = exp_folder + "_test"
+    if args.adp_noise:
+        exp_folder = exp_folder + "_adpnoise"
+    if args.adp_round:
+        exp_folder = exp_folder + "_adpround"
+
+    args.save_path = os.path.join(args.save_path, exp_folder)
+    if not args.test:
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
+    args.log_path = args.save_path.replace("/checkpoint/", "/log/")
+    if not os.path.exists(args.log_path):
+        os.makedirs(args.log_path)
 
 
 def prepare_workflow(args, logging):
-    
     train_loaders, val_loaders, test_loaders = [], [], []
     trainsets, valsets, testsets = [], [], []
     if args.data == "prostate":
@@ -51,9 +83,9 @@ def prepare_workflow(args, logging):
             model = nn.DataParallel(model)
         loss_fun = DiceLoss()
         # sites = ['BIDMC', 'HK',  'ISBI', 'ISBI_1.5', 'UCL']
-        sites = [1, 2, 3, 4, 5, 6]
+        sites = [0, 1, 2, 3, 4, 5]
         train_sites = list(range(args.clients))
-        val_sites = [1, 2, 3, 4, 5, 6]
+        val_sites = [0, 1, 2, 3, 4, 5]
         keys = ["Image", "Mask"]
         data_splits = [0.6, 0.2, 0.2]
         train_data_sizes = []

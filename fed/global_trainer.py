@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 01:00:00
+LastEditTime: 2024-03-01 13:31:01
 '''
 import sys, os
 
@@ -29,17 +29,6 @@ from utils.nova_utils import SimpleFedNova4Adam
 
 from fed.local_trainer import LocalUpdateDP
 
-def FedWeightAvg(w, size):
-    totalSize = sum(size)
-    w_avg = copy.deepcopy(w[0])
-    for k in w_avg.keys():
-        w_avg[k] = w[0][k]*size[0]
-    for k in w_avg.keys():
-        for i in range(1, len(w)):
-            w_avg[k] += w[i][k] * size[i]
-        # print(w_avg[k])
-        w_avg[k] = torch.div(w_avg[k], totalSize)
-    return w_avg
 
 class FedTrainner(object):
     def __init__(
@@ -93,6 +82,34 @@ class FedTrainner(object):
         self.sigma = []
         self.used_sigma_reciprocal = 0
 
+        self.best_changed = False
+        # TODO 根据mode 选择聚合函数
+        aggregation_dict = {
+            "fedsgd": self.FedWeightAvg,
+            "fedadam": self.FedAdamAggregation,
+        }
+        self.aggregation = aggregation_dict[args.mode]
+        if args.mode == "fedadam":
+            self.mt = None
+            self.vt = None
+            # momentum param for Adam optim
+            self.beta1 = 0.9
+            self.beta2 = 0.99
+            self.adam_tau = 1e-9
+
+            self.adam_lr = args.adam_lr
+
+    def save_metrics(self):
+        metrics_pd = pd.DataFrame.from_dict(self.val_loss)
+        metrics_pd.to_csv(os.path.join(self.args.log_path, "val_loss.csv"))
+        metrics_pd = pd.DataFrame.from_dict(self.val_acc)
+        metrics_pd.to_csv(os.path.join(self.args.log_path, "val_acc.csv"))
+
+        metrics_pd = pd.DataFrame.from_dict(self.test_loss)
+        metrics_pd.to_csv(os.path.join(self.args.log_path, "test_loss.csv"))
+        metrics_pd = pd.DataFrame.from_dict(self.test_acc)
+        metrics_pd.to_csv(os.path.join(self.args.log_path, "test_acc.csv"))
+    
     def start(
         self,
         train_loaders,
@@ -143,7 +160,7 @@ class FedTrainner(object):
                 loss_locals.append(copy.deepcopy(loss))
             
             # update global weights
-            w_glob = FedWeightAvg(w_locals, self.client_weights)
+            w_glob = self.aggregation(w_locals, self.client_weights)
             # copy weight to net_glob
             self.server_model.load_state_dict(w_glob)
             # update client model
@@ -156,43 +173,8 @@ class FedTrainner(object):
                 assert len(self.val_sites) == len(val_loaders)
                 for client_idx in self.aggregation_idxs:
                     local = self.clients[client_idx]
-                    val_loss, val_acc = local.test(mode="val")
-                    self.val_loss = dict_append(
-                        f"client_{self.val_sites[client_idx]}", val_loss, self.val_loss
-                    )
-                    self.args.writer.add_scalar(
-                        f"Loss/val_{self.val_sites[client_idx]}", val_loss, iter
-                    )
-                    if isinstance(val_acc, dict):
-                        out_str = ""
-                        for k, v in val_acc.items():
-                            out_str += " | Val {}: {:.4f}".format(k, v)
-                            self.val_acc = dict_append(
-                                f"client{self.val_sites[client_idx]}_" + k, v, self.val_acc
-                            )
-                            self.args.writer.add_scalar(
-                                f"Performance/val_client{self.val_sites[client_idx]}_{k}", v, iter,
-                            )
-
-                        self.logging.info(
-                            " Site-{:<10s}| Val Loss: {:.4f}{}".format(
-                                str(self.val_sites[client_idx]), val_loss, out_str
-                            )
-                        )
-                    else:
-                        self.val_acc = dict_append(
-                            f"client_{self.val_sites[client_idx]}",
-                            round(val_acc, 4),
-                            self.val_acc,
-                        )
-                        self.logging.info(
-                            " Site-{:<10s}| Val Loss: {:.4f} | Val Acc: {:.4f}".format(
-                                str(self.val_sites[client_idx]), val_loss, val_acc
-                            )
-                        )
-                        self.args.writer.add_scalar(
-                            f"Accuracy/val_{self.val_sites[client_idx]}", val_acc, iter
-                        )
+                    val_loss, val_acc = local.validation_model()
+                    self.record(iter, client_idx, val_loss, val_acc, "val")
 
                 clients_loss_avg = np.mean(
                     [v[-1] for k, v in self.val_loss.items() if "mean" not in k]
@@ -222,6 +204,42 @@ class FedTrainner(object):
                             self.best_epoch, np.mean(mean_val_acc_)
                         )
                     )
+                # save and test
+                if self.best_changed:
+                    model_dicts = self.prepare_ckpt(iter)
+                    self.logging.info(
+                        " Saving the local and server checkpoint to {}...".format(
+                            SAVE_PATH + f"/model_best_{iter}"
+                        )
+                    )
+                    torch.save(model_dicts, SAVE_PATH + f"/model_best_{iter}")
+                    self.best_changed = False
+                    test_sites = self.val_sites
+                    for index in test_sites:
+                        client = self.clients[index]
+                        test_loss, test_acc = client.test_ckpt(SAVE_PATH + f"/model_best_{iter}")
+                        self.record(iter, index, test_loss, test_acc, "test")
+                    
+                    clients_loss_avg = np.mean(
+                        [v[-1] for k, v in self.test_loss.items() if "mean" not in k]
+                    )
+                    self.test_loss["mean"].append(clients_loss_avg)
+
+                    self.test_acc, out_str = metric_log_print(self.test_acc, test_acc)
+
+                    self.logging.info(
+                        " Site-Average | Test Loss: {:.4f}{}".format(clients_loss_avg, out_str)
+                    )
+                elif iter % 10 == 0:
+                    model_dicts = self.prepare_ckpt(iter)
+                    self.logging.info(
+                        " Saving the local and server checkpoint to {}...".format(
+                            SAVE_PATH + f"/model_{iter}"
+                        )
+                    )
+                    torch.save(model_dicts, SAVE_PATH + f"/model_{iter}")
+
+                self.save_metrics()
 
             t_end = time.time()
             self.logging.info("Round {:3d}, Time:  {:.2f}s".format(iter, t_end - t_start))
@@ -232,6 +250,48 @@ class FedTrainner(object):
 
         self.logging.info("=====================FL completed=====================")
 
+    def record(self, iter, client_idx, loss, acc, mode):
+        assert mode in ["val", "test"]
+        loss_dict = getattr(self, f"{mode}_loss")
+        acc_dict = getattr(self, f"{mode}_acc")
+        loss_dict = dict_append(
+            f"client_{self.val_sites[client_idx]}", loss, loss_dict
+        )
+        self.args.writer.add_scalar(
+            f"Loss/val_{self.val_sites[client_idx]}", loss, iter
+        )
+        if isinstance(acc, dict):
+            out_str = ""
+            for k, v in acc.items():
+                out_str += " | Val {}: {:.4f}".format(k, v)
+                acc_dict = dict_append(
+                    f"client{self.val_sites[client_idx]}_" + k, v, acc_dict
+                )
+                self.args.writer.add_scalar(
+                    f"Performance/val_client{self.val_sites[client_idx]}_{k}", v, iter,
+                )
+
+            self.logging.info(
+                " Site-{:<10s}| Val Loss: {:.4f}{}".format(
+                    str(self.val_sites[client_idx]), loss, out_str
+                )
+            )
+        else:
+            acc_dict = dict_append(
+                f"client_{self.val_sites[client_idx]}",
+                round(acc, 4),
+                acc_dict,
+            )
+            self.logging.info(
+                " Site-{:<10s}| Val Loss: {:.4f} | Val Acc: {:.4f}".format(
+                    str(self.val_sites[client_idx]), loss, acc
+                )
+            )
+            self.args.writer.add_scalar(
+                f"Accuracy/val_{self.val_sites[client_idx]}", acc, iter
+            )
+
+
     def _calculate_sigma(self, epsilon, delta, iter, rounds, sensitiviy):
         # \sigma^2=\frac{T-t}{\frac{\epsilon^2}{2\ln(1/\delta)}-\sum_{i=1}^{t}\frac{1}{\sigma_i^2}}
         sigma_sqr = (rounds - iter) / (epsilon**2 / (2 * sensitiviy**2 * np.log(1 / delta)) - self.used_sigma_reciprocal)
@@ -240,6 +300,78 @@ class FedTrainner(object):
         if iter == 1:
             self.logging.info(f"sigma_0: {self.sigma[0]} , sigma_1: {sigma_sqr**0.5}")
         return sigma_sqr**0.5
+    
+    def _compute_update(self, old_param, new_param):
+        return [(new_param[key] - old_param[key]) for key in new_param.keys()]
+    
+    def FedWeightAvg(self, w, size):
+        totalSize = sum(size)
+        w_avg = copy.deepcopy(w[0])
+        for k in w_avg.keys():
+            w_avg[k] = w[0][k]*size[0]
+        for k in w_avg.keys():
+            for i in range(1, len(w)):
+                w_avg[k] += w[i][k] * size[i]
+            # print(w_avg[k])
+            w_avg[k] = torch.div(w_avg[k], totalSize)
+        return w_avg
+
+    def FedAdamAggregation(self, w, weight):
+        with torch.no_grad():
+            server_model = copy.deepcopy(self.server_model).to("cpu")
+            clients_grads = [self._compute_update(server_model.state_dict(), client_model) for client_model in w]
+            aggregated_grads = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+            for i in range(len(weight)):
+                for idx in range(len(aggregated_grads)):
+                    aggregated_grads[idx] = (
+                        aggregated_grads[idx] + clients_grads[i][idx] * weight[i]
+                    )
+            if self.mt is None:
+                self.mt = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+
+            if self.vt is None:
+                self.vt = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+            for idx, key in enumerate(server_model.state_dict().keys()):
+                assert self.mt[idx].shape == aggregated_grads[idx].shape
+                if "num_batches_tracked" in key or "running_mean" in key or "running_var" in key:
+                    continue
+
+                self.mt[idx].mul_(self.beta1).add_(aggregated_grads[idx], alpha=1 - self.beta1)
+                self.vt[idx].mul_(self.beta2).add_(
+                    torch.pow(aggregated_grads[idx], 2), alpha=1 - self.beta2
+                )
+
+                mt_h = self.mt[idx]
+                denom = torch.sqrt(self.vt[idx]) + self.adam_tau
+
+                aggregated_grads[idx].copy_(mt_h.mul(self.adam_lr).div(denom))
+            assert len(self.server_model.state_dict().keys()) == len(aggregated_grads)
+            for idx, key in enumerate(server_model.state_dict().keys()):
+                if "num_batches_tracked" in key:
+                    server_model.state_dict()[key].data.copy_(w[0].state_dict()[key])
+                else:
+                    server_model.state_dict()[key].data.add_(aggregated_grads[idx])
+
+        return server_model.state_dict()
+        
+    def prepare_ckpt(self, iter):
+        if self.args.local_bn:
+            model_dicts = {
+                "server_model": self.server_model.state_dict(),
+                "best_epoch": self.best_epoch,
+                "best_acc": self.best_acc,
+                "iter": iter,
+            }
+            for model_idx, model in enumerate(self.client_models):
+                model_dicts["model_{}".format(model_idx)] = model.state_dict()
+        else:
+            model_dicts = {
+                "server_model": self.server_model.state_dict(),
+                "best_epoch": self.best_epoch,
+                "best_acc": self.best_acc,
+                "iter": iter,
+            }
+        return model_dicts
     
     def adaptive_rounds(self, iter):
         # TODO adaptive rounds

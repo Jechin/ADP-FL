@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 01:01:22
+LastEditTime: 2024-03-01 13:18:46
 '''
 import torch
 from torch import nn, autograd
@@ -206,18 +206,18 @@ class LocalUpdateDP(object):
             self.logging.info("Site-{:<5s} | after add noise norm: {:.8f}".format(str(self.idx), norm**0.5))
         return self.model.state_dict(), loss
     
-    def test(self, mode):
+    def _test(self, model, mode):
         assert mode in ["val", "test"]
-        test_loader = self.val_loader if mode == "val" else self.test_loader
-        self.model.to(self.device)
-        self.model.eval()
+        data_loader = self.val_loader if mode == "val" else self.test_loader
+        model.to(self.device)
+        model.eval()
         loss_all = 0
         num_sample_test = 0
 
-        segmentation = "UNet" in self.model.__class__.__name__
+        segmentation = "UNet" in model.__class__.__name__
         test_acc = 0.0 if not segmentation else {}
         model_pred, label_gt, pred_prob = [], [], []
-        for _, data in enumerate(test_loader):
+        for _, data in enumerate(data_loader):
             if self.args.data.startswith("prostate"):
                 inp = data["Image"]
                 target = data["Mask"]
@@ -228,7 +228,7 @@ class LocalUpdateDP(object):
                 target = target.to(self.device)
 
             inp = inp.to(self.device)
-            output = self.model(inp)
+            output = model(inp)
 
             if self.args.data.startswith("prostate"):
                 loss = self.loss_fun(output[:, 0, :, :], target)
@@ -263,12 +263,13 @@ class LocalUpdateDP(object):
                 pred_prob.extend(out_prob.data[:, 1].view(-1).detach().cpu().numpy())
                 label_gt.extend(target.view(-1).detach().cpu().numpy())
 
-        loss = loss_all / len(test_loader)
+        loader_length = len(data_loader)
+        loss = loss_all / loader_length
         # acc = test_acc/ len(data_loader) if segmentation else correct/total
         if segmentation:
             acc = {
-                "Dice": test_acc["Dice"] / len(test_loader),
-                "IoU": test_acc["IoU"] / len(test_loader),
+                "Dice": test_acc["Dice"] / loader_length,
+                "IoU": test_acc["IoU"] / loader_length,
                 "HD": test_acc["HD"] / num_sample_test,
             }
         else:
@@ -283,8 +284,17 @@ class LocalUpdateDP(object):
                 "Spe": metric_res[4],
                 "F1": metric_res[5],
             }
-        self.model.to("cpu")
+        model.to("cpu")
         return loss, acc
+    
+    def validation_model(self):
+        return self._test(self.model, "val")
+    
+    def test_ckpt(self, ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        test_model = copy.deepcopy(self.model).to(self.device)
+        test_model.load_state_dict(checkpoint["server_model"])
+        return self._test(test_model, "test")
 
     
     def clip_gradients(self, model, beta, origin_model, model_estimate):

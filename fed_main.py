@@ -39,42 +39,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     prepare_args(args)
 
-    if args.save_path != "":
-        args.save_path = os.path.join(args.save_path, "./experiments/checkpoint/{}/seed{}".format(
-            args.data, args.seed
-        ))
-    else: 
-        args.save_path = "./experiments/checkpoint/{}/seed{}".format(
-            args.data, args.seed
-        )
-    exp_folder = "{}_rounds{}_lr{}_batch{}_N{}_eps{}_delta{}".format(
-        args.mode,
-        args.rounds,
-        args.lr,
-        args.batch,
-        args.clients,
-        args.epsilon,
-        args.delta
-    )
-    if args.debug:
-        exp_folder = exp_folder + "_debug"
-    if args.test:
-        exp_folder = exp_folder + "_test"
-    if args.adp_noise:
-        exp_folder = exp_folder + "_adpnoise"
-    if args.adp_round:
-        exp_folder = exp_folder + "_adpround"
-
-    args.save_path = os.path.join(args.save_path, exp_folder)
-    if not args.test:
-        if not os.path.exists(args.save_path):
-            os.makedirs(args.save_path)
     SAVE_PATH = args.save_path
 
     # Set up logging
-    args.log_path = args.save_path.replace("/checkpoint/", "/log/")
-    if not os.path.exists(args.log_path):
-        os.makedirs(args.log_path)
     lg = setup_logger(
         f"{args.mode}-{get_timestamp()}",
         args.log_path,
@@ -131,16 +98,16 @@ if __name__ == "__main__":
     args.writer = SummaryWriter(args.log_path)
 
     # setup trainer
-    trainer_dict = {
-        "fedavg": FedTrainner,
-        "dpsgd": FedTrainner,
-        "no_dp": FedTrainner,
-    }
-    TrainerClass = trainer_dict[args.mode]
+    # trainer_dict = {
+    #     "fedavg": FedTrainner,
+    #     "dpsgd": FedTrainner,
+    #     "no_dp": FedTrainner,
+    # }
+    # TrainerClass = trainer_dict[args.mode]
 
-    original_server_model  = copy.deepcopy(server_model)
+    # original_server_model  = copy.deepcopy(server_model)
 
-    trainer = TrainerClass(
+    trainer = FedTrainner(
         args,
         lg,
         device,
