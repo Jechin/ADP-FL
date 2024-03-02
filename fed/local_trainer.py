@@ -3,7 +3,7 @@ Description:
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:15:59
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 13:18:46
+LastEditTime: 2024-03-02 16:51:15
 '''
 import torch
 from torch import nn, autograd
@@ -38,6 +38,8 @@ class LocalUpdateDP(object):
         self.loss_fun = loss_fun
         self.lr = args.lr
         self.model = model
+        # if args.mode == "fedsgd":
+        #     self.optimizer = optim.SGD(params=self.model.parameters(), lr=self.args.lr, momentum=0.9)
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=self.args.lr, amsgrad=True)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                         self.optimizer, T_max=self.args.rounds
@@ -176,7 +178,7 @@ class LocalUpdateDP(object):
                 self._compute_norm_l2_model_dict(g_all)
             ))
         
-        if self.args.mode != 'no_dp' and sigma != None:
+        if not self.args.no_dp and sigma != None:
             # clip gradients and add noises
             if self.args.adp_noise:
                 sensitivity_params = self.clip_gradients(self.model, beta_clip_fact, origin_model, model_estimate)
@@ -204,7 +206,7 @@ class LocalUpdateDP(object):
             for _, param in self.model.named_parameters():
                 norm += torch.norm(param, 2).item()**2
             self.logging.info("Site-{:<5s} | after add noise norm: {:.8f}".format(str(self.idx), norm**0.5))
-        return self.model.state_dict(), loss
+        return self.model.to("cpu").state_dict(), loss
     
     def _test(self, model, mode):
         assert mode in ["val", "test"]

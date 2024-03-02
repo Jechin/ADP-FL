@@ -65,6 +65,8 @@ def prepare_args(args):
         exp_folder = exp_folder + "_adpnoise"
     if args.adp_round:
         exp_folder = exp_folder + "_adpround"
+    if args.no_dp:
+        exp_folder = exp_folder + "_nodp"
 
     args.save_path = os.path.join(args.save_path, exp_folder)
     if not args.test:
