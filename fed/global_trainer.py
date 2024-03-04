@@ -3,7 +3,7 @@ Description: Base FedAvg Trainer
 Author: Jechin jechinyu@163.com
 Date: 2024-02-16 16:14:16
 LastEditors: Jechin jechinyu@163.com
-LastEditTime: 2024-03-01 15:13:42
+LastEditTime: 2024-03-05 00:05:40
 '''
 import sys, os
 
@@ -60,6 +60,7 @@ class FedTrainner(object):
             if client_weights is None
             else client_weights
         )
+        self.current_iter = 0
         self.client_models = [copy.deepcopy(server_model) for idx in range(self.client_num)]
         self.client_grads = [None for i in range(self.client_num)]
         (
@@ -98,6 +99,16 @@ class FedTrainner(object):
             self.adam_tau = 1e-9
 
             self.adam_lr = args.adam_lr
+        elif args.mode == "fedrmsprop":
+            assert self.sample_rate == 1, "assume all clients join the training"
+            self.interval = 3
+            self.Gt = None
+            self.At = None
+            self.init_At = False
+            self.rmsprop_gamma = 0.9
+            self.rmsprop_epsilon = 1e-7
+            self.rmsprop_lr = self.args.rmsprop_lr
+            self.count = 0
 
     def save_metrics(self):
         metrics_pd = pd.DataFrame.from_dict(self.val_loss)
@@ -133,6 +144,7 @@ class FedTrainner(object):
         ]
         self.logging.info("=====================FL Start=====================") 
         for iter in range(self.args.rounds):
+            self.current_iter = iter
             if iter >= self.args.rounds:
                 break
             self.logging.info("------------ Round({:^5d}/{:^5d}) Train ------------".format(iter, self.args.rounds))
@@ -319,6 +331,59 @@ class FedTrainner(object):
             w_avg[k] = torch.div(w_avg[k], totalSize)
         return w_avg
 
+    def FedRMSPROPAgggegation(self, w, weight):
+        branch = self.branch_func(self.interval)
+        with torch.no_grad():
+            server_model = copy.deepcopy(self.server_model).to("cpu")
+            clients_grads = [self._compute_update(server_model.state_dict(), client_model) for client_model in w]
+            if branch == 2:
+                for i in range(len(clients_grads[0])):
+                    denom = torch.sqrt(self.At[i]).add(self.rmsprop_epsilon)
+                    for idx_client in range(self.client_num):
+                        clients_grads[idx_client][i].div_(denom)
+                lr = self.rmsprop_lr
+
+            aggregated_grads = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+
+            for i in range(self.client_num):
+                for idx in range(len(aggregated_grads)):
+                    aggregated_grads[idx] = (
+                        aggregated_grads[idx] + clients_grads[i][idx] * weight[i]
+                    )
+
+            if self.Gt is None:
+                self.Gt = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+
+            if branch <= 1:
+                for i in range(len(aggregated_grads)):
+                    self.Gt[i].add_(aggregated_grads[i])
+                self.count += 1
+                lr = 1
+
+            if branch == 1:
+                Gt_avg_sq = copy.deepcopy(self.Gt)
+                for i in range(len(aggregated_grads)):
+                    Gt_avg_sq[i] = torch.pow(Gt_avg_sq[i].div(self.count), 2)
+
+                    if self.init_At:
+                        self.At[i].mul_(self.rmsprop_gamma).add_(
+                            Gt_avg_sq[i], alpha=1 - self.rmsprop_gamma
+                        )
+
+                if not self.init_At:
+                    self.At = copy.deepcopy(Gt_avg_sq)
+                    self.init_At = True
+
+                self.Gt = [torch.zeros_like(grad_term) for grad_term in clients_grads[0]]
+                self.count = 0
+            assert len(self.server_model.state_dict().keys()) == len(aggregated_grads)
+            for idx, key in enumerate(server_model.state_dict().keys()):
+                if "num_batches_tracked" in key:
+                    server_model.state_dict()[key].data.copy_(w[0].state_dict()[key])
+                else:
+                    server_model.state_dict()[key].data.add_(aggregated_grads[idx])
+            return server_model.state_dict()
+                
     def FedAdamAggregation(self, w, weight):
         with torch.no_grad():
             server_model = copy.deepcopy(self.server_model).to("cpu")
@@ -383,3 +448,11 @@ class FedTrainner(object):
         if self.val_loss["mean"][iter-1] - self.val_loss["mean"][iter] < threshold:
             self.args.rounds = iter + int((self.args.rounds - iter) * factor)
     
+    def branch_func(self, interval):
+        i = self.current_iter
+
+        s1 = interval
+        s2 = interval
+        on_interval = (i + 1 + s2) % (s1 + s2) == 0
+        use_adaptive = (i // interval) % (1 + 1) > 0
+        return 2 if use_adaptive else (1 if on_interval else 0)
