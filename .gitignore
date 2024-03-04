@@ -162,6 +162,7 @@ cython_debug/
 
 # log
 log/
+checkpoint/
 
 # dataset
 dataset/Prostate/*.zip
